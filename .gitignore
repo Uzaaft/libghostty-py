@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.dylib
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+.direnv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+result
+
+# Bundled native libraries (copied during wheel build)
+src/libghostty/libghostty-vt.*
+src/libghostty/ghostty-vt.dll
