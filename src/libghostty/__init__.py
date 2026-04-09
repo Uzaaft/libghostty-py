@@ -11,10 +11,28 @@ from libghostty.errors import (
 from libghostty.key import KeyEncoder, KeyEvent
 from libghostty.mouse import MouseEncoder, MouseEvent
 from libghostty.osc import OscCommand, OscParser
+from libghostty.render import (
+    Cell,
+    CellStyle,
+    Color,
+    Colors,
+    CursorInfo,
+    CursorStyle,
+    Dirty,
+    RenderState,
+    Snapshot,
+)
 from libghostty.sgr import SgrAttribute, SgrParser
 from libghostty.terminal import Terminal
 
 __all__ = [
+    "Cell",
+    "CellStyle",
+    "Color",
+    "Colors",
+    "CursorInfo",
+    "CursorStyle",
+    "Dirty",
     "GhosttyError",
     "InvalidValueError",
     "KeyEncoder",
@@ -26,8 +44,10 @@ __all__ = [
     "OscParser",
     "OutOfMemoryError",
     "OutOfSpaceError",
+    "RenderState",
     "SgrAttribute",
     "SgrParser",
+    "Snapshot",
     "Terminal",
     "ffi",
     "lib",

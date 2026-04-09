@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import QApplication, QWidget
 from libghostty import Terminal, ffi, lib
 from libghostty.errors import check_result
 from libghostty.key import KeyEncoder, KeyEvent
+from libghostty.render import Color, CursorStyle, Dirty, RenderState
 
 if TYPE_CHECKING:
     from PyQt6.QtGui import QPaintEvent
@@ -161,198 +162,8 @@ def _spawn_shell(cols: int, rows: int) -> tuple[int, int]:
     return master_fd, child_pid
 
 
-class RenderState:
-    """Manages the libghostty render state for efficient screen painting."""
-
-    def __init__(self) -> None:
-        handle = ffi.new("GhosttyRenderState *")
-        check_result(lib.ghostty_render_state_new(ffi.NULL, handle))
-        self._handle = handle[0]
-
-        # Keep row iterator and cells handles in pointer containers so
-        # we can pass their address to C functions that write through
-        # the pointer (ghostty_render_state_get with ROW_ITERATOR,
-        # ghostty_render_state_row_get with CELLS).
-        self._row_iter_ptr = ffi.new("GhosttyRenderStateRowIterator *")
-        check_result(lib.ghostty_render_state_row_iterator_new(ffi.NULL, self._row_iter_ptr))
-
-        self._cells_ptr = ffi.new("GhosttyRenderStateRowCells *")
-        check_result(lib.ghostty_render_state_row_cells_new(ffi.NULL, self._cells_ptr))
-
-    def __del__(self) -> None:
-        if hasattr(self, "_cells_ptr") and self._cells_ptr[0] != ffi.NULL:
-            lib.ghostty_render_state_row_cells_free(self._cells_ptr[0])
-        if hasattr(self, "_row_iter_ptr") and self._row_iter_ptr[0] != ffi.NULL:
-            lib.ghostty_render_state_row_iterator_free(self._row_iter_ptr[0])
-        if hasattr(self, "_handle") and self._handle != ffi.NULL:
-            lib.ghostty_render_state_free(self._handle)
-
-    def update(self, terminal: Terminal) -> None:
-        check_result(lib.ghostty_render_state_update(self._handle, terminal.handle))
-
-    @property
-    def dirty(self) -> int:
-        out = ffi.new("GhosttyRenderStateDirty *")
-        check_result(
-            lib.ghostty_render_state_get(self._handle, lib.GHOSTTY_RENDER_STATE_DATA_DIRTY, out)
-        )
-        return out[0]
-
-    def clear_dirty(self) -> None:
-        val = ffi.new("GhosttyRenderStateDirty *", lib.GHOSTTY_RENDER_STATE_DIRTY_FALSE)
-        lib.ghostty_render_state_set(self._handle, lib.GHOSTTY_RENDER_STATE_OPTION_DIRTY, val)
-
-    def get_colors(self) -> tuple[QColor, QColor]:
-        """Return (background, foreground) as QColors."""
-        colors = ffi.new("GhosttyRenderStateColors *")
-        colors.size = ffi.sizeof("GhosttyRenderStateColors")
-        check_result(lib.ghostty_render_state_colors_get(self._handle, colors))
-        bg = QColor(colors.background.r, colors.background.g, colors.background.b)
-        fg = QColor(colors.foreground.r, colors.foreground.g, colors.foreground.b)
-        return bg, fg
-
-    def get_cursor_pos(self) -> tuple[int, int] | None:
-        has = ffi.new("bool *")
-        check_result(
-            lib.ghostty_render_state_get(
-                self._handle,
-                lib.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE,
-                has,
-            )
-        )
-        if not has[0]:
-            return None
-        cx = ffi.new("uint16_t *")
-        cy = ffi.new("uint16_t *")
-        check_result(
-            lib.ghostty_render_state_get(
-                self._handle,
-                lib.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X,
-                cx,
-            )
-        )
-        check_result(
-            lib.ghostty_render_state_get(
-                self._handle,
-                lib.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y,
-                cy,
-            )
-        )
-        return (cx[0], cy[0])
-
-    def get_cursor_visible(self) -> bool:
-        out = ffi.new("bool *")
-        check_result(
-            lib.ghostty_render_state_get(
-                self._handle, lib.GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, out
-            )
-        )
-        return bool(out[0])
-
-    def get_cursor_style(self) -> int:
-        out = ffi.new("GhosttyRenderStateCursorVisualStyle *")
-        check_result(
-            lib.ghostty_render_state_get(
-                self._handle,
-                lib.GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE,
-                out,
-            )
-        )
-        return out[0]
-
-    def iter_rows_and_cells(
-        self,
-        default_bg: QColor,
-        default_fg: QColor,
-    ) -> list[list[tuple[str, QColor, QColor, bool, bool, bool]]]:
-        """Iterate all rows and cells, returning a grid of render data.
-
-        Each cell is (text, fg_color, bg_color, bold, italic, inverse).
-        """
-        # Populate row iterator from render state. The C function
-        # writes through the pointer, so pass the pointer container.
-        result = lib.ghostty_render_state_get(
-            self._handle,
-            lib.GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
-            self._row_iter_ptr,
-        )
-        if result != 0:
-            return []
-
-        row_it = self._row_iter_ptr[0]
-        rows: list[list[tuple[str, QColor, QColor, bool, bool, bool]]] = []
-        while lib.ghostty_render_state_row_iterator_next(row_it):
-            # Populate cell iterator — same pointer-to-handle pattern
-            check_result(
-                lib.ghostty_render_state_row_get(
-                    row_it,
-                    lib.GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
-                    self._cells_ptr,
-                )
-            )
-
-            cells = self._cells_ptr[0]
-            row: list[tuple[str, QColor, QColor, bool, bool, bool]] = []
-            while lib.ghostty_render_state_row_cells_next(cells):
-                # Grapheme text
-                glyph_len = ffi.new("uint32_t *")
-                lib.ghostty_render_state_row_cells_get(
-                    cells,
-                    lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
-                    glyph_len,
-                )
-                text = ""
-                if glyph_len[0] > 0:
-                    buf = ffi.new("uint32_t[]", glyph_len[0])
-                    lib.ghostty_render_state_row_cells_get(
-                        cells,
-                        lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
-                        buf,
-                    )
-                    text = "".join(chr(buf[i]) for i in range(glyph_len[0]))
-
-                # Foreground color
-                fg_rgb = ffi.new("GhosttyColorRgb *")
-                fg_result = lib.ghostty_render_state_row_cells_get(
-                    cells,
-                    lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR,
-                    fg_rgb,
-                )
-                fg = QColor(fg_rgb.r, fg_rgb.g, fg_rgb.b) if fg_result == 0 else default_fg
-
-                # Background color
-                bg_rgb = ffi.new("GhosttyColorRgb *")
-                bg_result = lib.ghostty_render_state_row_cells_get(
-                    cells,
-                    lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR,
-                    bg_rgb,
-                )
-                bg = QColor(bg_rgb.r, bg_rgb.g, bg_rgb.b) if bg_result == 0 else default_bg
-
-                # Style flags
-                style = ffi.new("GhosttyStyle *")
-                style.size = ffi.sizeof("GhosttyStyle")
-                style_result = lib.ghostty_render_state_row_cells_get(
-                    cells,
-                    lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE,
-                    style,
-                )
-                bold = bool(style.bold) if style_result == 0 else False
-                italic = bool(style.italic) if style_result == 0 else False
-                inverse = bool(style.inverse) if style_result == 0 else False
-
-                row.append((text, fg, bg, bold, italic, inverse))
-
-            # Clear per-row dirty flag
-            false_val = ffi.new("bool *", False)
-            lib.ghostty_render_state_row_set(
-                row_it,
-                lib.GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY,
-                false_val,
-            )
-            rows.append(row)
-
-        return rows
+def _to_qcolor(c: Color, fallback: QColor) -> QColor:
+    return QColor(c.r, c.g, c.b) if c is not None else fallback
 
 
 _DEFAULT_BG = QColor(30, 30, 46)
@@ -499,9 +310,9 @@ class GhostlingWidget(QWidget):
             return
 
         self._terminal.write(data)
-        self._render.update(self._terminal)
+        snap = self._render.update(self._terminal)
 
-        if self._render.dirty != lib.GHOSTTY_RENDER_STATE_DIRTY_FALSE:
+        if snap.dirty != Dirty.CLEAN:
             self.update()
 
         self._update_title()
@@ -582,71 +393,70 @@ class GhostlingWidget(QWidget):
         painter = QPainter(self)
         painter.setFont(self._font)
 
-        bg_color, fg_color = self._render.get_colors()
-        painter.fillRect(self.rect(), bg_color)
+        with self._render.update(self._terminal) as snap:
+            colors = snap.colors
+            bg_color = QColor(colors.background.r, colors.background.g, colors.background.b)
+            fg_color = QColor(colors.foreground.r, colors.foreground.g, colors.foreground.b)
+            painter.fillRect(self.rect(), bg_color)
 
-        grid = self._render.iter_rows_and_cells(bg_color, fg_color)
-        cw = self._cell_width
-        ch = self._cell_height
-        ascent = QFontMetricsF(self._font).ascent()
+            cw = self._cell_width
+            ch = self._cell_height
+            ascent = QFontMetricsF(self._font).ascent()
 
-        for row_idx, row in enumerate(grid):
-            y = row_idx * ch
-            for col_idx, (text, fg, bg, bold, italic, inverse) in enumerate(row):
-                x = col_idx * cw
+            for row_idx, row in enumerate(snap.rows()):
+                y = row_idx * ch
+                for col_idx, cell in enumerate(row.cells()):
+                    x = col_idx * cw
 
-                # Handle inverse (reverse video)
-                if inverse:
-                    fg, bg = bg, fg
+                    fg = _to_qcolor(cell.fg, fg_color)
+                    bg = _to_qcolor(cell.bg, bg_color)
 
-                # Draw cell background if different from terminal background
-                if bg != bg_color or inverse:
-                    painter.fillRect(int(x), int(y), int(cw) + 1, int(ch), bg)
+                    if cell.style.inverse:
+                        fg, bg = bg, fg
 
-                # Draw text
-                if text and text != " ":
-                    font = QFont(self._font)
-                    if bold:
-                        font.setBold(True)
-                    if italic:
-                        font.setItalic(True)
-                    painter.setFont(font)
-                    painter.setPen(fg)
-                    painter.drawText(int(x), int(y + ascent), text)
-                    if bold or italic:
-                        painter.setFont(self._font)
+                    if bg != bg_color or cell.style.inverse:
+                        painter.fillRect(int(x), int(y), int(cw) + 1, int(ch), bg)
 
-        # Draw cursor
-        if self._render.get_cursor_visible():
-            cursor_pos = self._render.get_cursor_pos()
-            if cursor_pos is not None and self._blink_visible:
-                cx, cy = cursor_pos
-                cursor_x = cx * cw
-                cursor_y = cy * ch
-                style = self._render.get_cursor_style()
+                    if cell.text and cell.text != " ":
+                        font = QFont(self._font)
+                        if cell.style.bold:
+                            font.setBold(True)
+                        if cell.style.italic:
+                            font.setItalic(True)
+                        painter.setFont(font)
+                        painter.setPen(fg)
+                        painter.drawText(int(x), int(y + ascent), cell.text)
+                        if cell.style.bold or cell.style.italic:
+                            painter.setFont(self._font)
+
+                row.set_dirty(False)
+
+            cursor = snap.cursor
+            if cursor is not None and cursor.visible and self._blink_visible:
+                cursor_x = cursor.x * cw
+                cursor_y = cursor.y * ch
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(_CURSOR_COLOR)
 
-                if style == lib.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK:
+                if cursor.style == CursorStyle.BLOCK:
                     painter.setOpacity(0.7)
                     painter.drawRect(int(cursor_x), int(cursor_y), int(cw), int(ch))
                     painter.setOpacity(1.0)
-                elif style == lib.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR:
+                elif cursor.style == CursorStyle.BAR:
                     painter.drawRect(int(cursor_x), int(cursor_y), 2, int(ch))
-                elif style == lib.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE:
+                elif cursor.style == CursorStyle.UNDERLINE:
                     painter.drawRect(int(cursor_x), int(cursor_y + ch - 2), int(cw), 2)
-                elif style == lib.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW:
+                elif cursor.style == CursorStyle.BLOCK_HOLLOW:
                     painter.setBrush(Qt.BrushStyle.NoBrush)
                     painter.setPen(_CURSOR_COLOR)
                     painter.drawRect(int(cursor_x), int(cursor_y), int(cw), int(ch))
 
-        # Reset dirty state after full paint
-        self._render.clear_dirty()
         painter.end()
 
     def _on_blink(self) -> None:
         self._blink_visible = not self._blink_visible
-        if self._render.get_cursor_visible():
+        snap = self._render.update(self._terminal)
+        if snap.cursor is not None and snap.cursor.visible:
             self.update()
 
     def _update_title(self) -> None:
