@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from libghostty._ffi import ffi, lib
-from libghostty.errors import NoValueError, check_result
+from libghostty_cffi import ffi, lib
+from libghostty_vt.errors import NoValueError, check_result
 
 if TYPE_CHECKING:
     from cffi import FFI

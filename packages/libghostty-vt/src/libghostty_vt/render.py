@@ -10,13 +10,13 @@ import enum
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from libghostty._ffi import ffi, lib
-from libghostty.errors import check_result
+from libghostty_cffi import ffi, lib
+from libghostty_vt.errors import check_result
 
 if TYPE_CHECKING:
     from cffi import FFI
 
-    from libghostty.terminal import Terminal
+    from libghostty_vt.terminal import Terminal
 
 
 class Dirty(enum.IntEnum):

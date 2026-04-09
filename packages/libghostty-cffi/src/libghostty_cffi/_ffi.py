@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import cffi
 
-from libghostty._cdef import CDEF
+from libghostty_cffi._cdef import CDEF
 
 if TYPE_CHECKING:
     from cffi import FFI as FFIType

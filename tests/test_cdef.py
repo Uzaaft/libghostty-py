@@ -7,7 +7,9 @@ import cffi
 
 def _load_cdef() -> str:
     """Load CDEF string without triggering the package __init__."""
-    spec = importlib.util.spec_from_file_location("_cdef", "src/libghostty/_cdef.py")
+    spec = importlib.util.spec_from_file_location(
+        "_cdef", "packages/libghostty-cffi/src/libghostty_cffi/_cdef.py"
+    )
     assert spec is not None
     assert spec.loader is not None
     mod = importlib.util.module_from_spec(spec)

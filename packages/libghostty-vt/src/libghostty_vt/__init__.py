@@ -1,17 +1,17 @@
-"""Python bindings for libghostty-vt."""
+"""Pythonic Python bindings for libghostty-vt."""
 
-from libghostty._ffi import ffi, lib
-from libghostty.errors import (
+from libghostty_cffi import ffi, lib
+from libghostty_vt.errors import (
     GhosttyError,
     InvalidValueError,
     NoValueError,
     OutOfMemoryError,
     OutOfSpaceError,
 )
-from libghostty.key import KeyEncoder, KeyEvent
-from libghostty.mouse import MouseEncoder, MouseEvent
-from libghostty.osc import OscCommand, OscParser
-from libghostty.render import (
+from libghostty_vt.key import KeyEncoder, KeyEvent
+from libghostty_vt.mouse import MouseEncoder, MouseEvent
+from libghostty_vt.osc import OscCommand, OscParser
+from libghostty_vt.render import (
     Cell,
     CellStyle,
     Color,
@@ -22,8 +22,8 @@ from libghostty.render import (
     RenderState,
     Snapshot,
 )
-from libghostty.sgr import SgrAttribute, SgrParser
-from libghostty.terminal import Terminal
+from libghostty_vt.sgr import SgrAttribute, SgrParser
+from libghostty_vt.terminal import Terminal
 
 __all__ = [
     "Cell",

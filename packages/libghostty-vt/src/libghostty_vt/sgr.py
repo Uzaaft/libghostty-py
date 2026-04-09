@@ -6,8 +6,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from libghostty._ffi import ffi, lib
-from libghostty.errors import check_result
+from libghostty_cffi import ffi, lib
+from libghostty_vt.errors import check_result
 
 if TYPE_CHECKING:
     from cffi import FFI

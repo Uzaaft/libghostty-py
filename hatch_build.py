@@ -123,7 +123,7 @@ class NativeLibraryHook(BuildHookInterface):
             return
 
         lib_path = _resolve_library()
-        pkg_dir = Path(self.root) / "src" / "libghostty"
+        pkg_dir = Path(self.root) / "src" / "libghostty_cffi"
         lib_name = _lib_name()
 
         # Resolve symlinks to get the actual file
@@ -132,7 +132,7 @@ class NativeLibraryHook(BuildHookInterface):
         # Copy the real file with the canonical unversioned name
         dest = pkg_dir / lib_name
         shutil.copy2(real_path, dest)
-        build_data["force_include"][str(dest)] = f"libghostty/{lib_name}"
+        build_data["force_include"][str(dest)] = f"libghostty_cffi/{lib_name}"
 
         # Mark this as a platform-specific wheel
         build_data["pure_python"] = False
@@ -140,7 +140,7 @@ class NativeLibraryHook(BuildHookInterface):
 
     def clean(self, versions: list[str]) -> None:
         # Remove any previously bundled libraries
-        pkg_dir = Path(self.root) / "src" / "libghostty"
+        pkg_dir = Path(self.root) / "src" / "libghostty_cffi"
         for suffix in (".so", ".dylib", ".dll"):
             for f in pkg_dir.glob(f"*ghostty*{suffix}*"):
                 f.unlink(missing_ok=True)
