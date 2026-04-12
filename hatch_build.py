@@ -13,6 +13,7 @@ installation.
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess as sp
 import sys
@@ -21,9 +22,14 @@ from pathlib import Path
 from typing import Any, final
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
-from libghostty_cffi._ffi import LIB_NAME
 
 REPO_PARENT = Path(__file__).parents[1]
+
+LIB_NAME = {
+    "Linux": "libghostty-vt.so",
+    "Darwin": "libghostty-vt.dylib",
+    "Windows": "ghostty-vt.dll",
+}.get(platform.system(), "libghostty-vt.so")
 
 
 def _find_via_env() -> Path | None:
