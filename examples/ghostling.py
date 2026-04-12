@@ -21,6 +21,7 @@ import signal
 import struct
 import sys
 import termios
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from libghostty_cffi import ffi, lib
@@ -318,10 +319,8 @@ class GhostlingWidget(QWidget):
         self._update_title()
 
     def _write_to_pty(self, data: bytes) -> None:
-        try:
+        with suppress(OSError):
             os.write(self._master_fd, data)
-        except OSError:
-            pass
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         qt_key = event.key()
@@ -470,15 +469,11 @@ class GhostlingWidget(QWidget):
 
     def closeEvent(self, event: object) -> None:
         self._notifier.setEnabled(False)
-        try:
+        with suppress(OSError):
             os.close(self._master_fd)
-        except OSError:
-            pass
-        try:
+        with suppress(OSError, ChildProcessError):
             os.kill(self._child_pid, signal.SIGTERM)
             os.waitpid(self._child_pid, os.WNOHANG)
-        except (OSError, ChildProcessError):
-            pass
 
 
 def main() -> int:
