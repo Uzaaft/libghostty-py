@@ -7,25 +7,25 @@ from libghostty_cffi import ffi, lib
 from libghostty_vt.errors import check_result
 
 
+def check_build_info(field: int) -> bool:
+    out = ffi.new("bool *")
+    check_result(lib.ghostty_build_info(field, out))
+    return bool(out[0])
+
+
 def has_simd() -> bool:
     """Whether SIMD-accelerated code paths are enabled."""
-    out = ffi.new("bool *")
-    check_result(lib.ghostty_build_info(lib.GHOSTTY_BUILD_INFO_SIMD, out))
-    return bool(out[0])
+    return check_build_info(lib.GHOSTTY_BUILD_INFO_SIMD)
 
 
 def has_kitty_graphics() -> bool:
     """Whether Kitty graphics protocol support is available."""
-    out = ffi.new("bool *")
-    check_result(lib.ghostty_build_info(lib.GHOSTTY_BUILD_INFO_KITTY_GRAPHICS, out))
-    return bool(out[0])
+    return check_build_info(lib.GHOSTTY_BUILD_INFO_KITTY_GRAPHICS)
 
 
 def has_tmux_control_mode() -> bool:
     """Whether tmux control mode support is available."""
-    out = ffi.new("bool *")
-    check_result(lib.ghostty_build_info(lib.GHOSTTY_BUILD_INFO_TMUX_CONTROL_MODE, out))
-    return bool(out[0])
+    return check_build_info(lib.GHOSTTY_BUILD_INFO_TMUX_CONTROL_MODE)
 
 
 def version() -> str:
