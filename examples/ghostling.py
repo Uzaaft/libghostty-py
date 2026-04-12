@@ -429,7 +429,7 @@ class GhostlingWidget(QWidget):
                         if cell.style.bold or cell.style.italic:
                             painter.setFont(self._font)
 
-                row.set_dirty(False)
+                row.dirty = False
 
             cursor = snap.cursor
             if cursor is not None and cursor.visible and self._blink_visible:
