@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from libghostty_cffi import ffi, lib
+
 from libghostty_vt.errors import check_result
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from cffi import FFI
 
 
@@ -101,8 +103,5 @@ class SgrParser:
                 underline_style = attr.value.underline
 
             yield SgrAttribute(
-                tag=tag,
-                rgb=rgb,
-                palette_index=palette_index,
-                underline_style=underline_style,
+                tag=tag, rgb=rgb, palette_index=palette_index, underline_style=underline_style
             )

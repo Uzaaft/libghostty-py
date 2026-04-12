@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from libghostty_cffi import ffi, lib
+
 from libghostty_vt.errors import check_result
 
 if TYPE_CHECKING:
@@ -152,11 +153,7 @@ class Snapshot:
         out = ffi.new("GhosttyRenderStateColors *")
         out.size = ffi.sizeof("GhosttyRenderStateColors")
         check_result(lib.ghostty_render_state_colors_get(self._state._handle, out))
-        cursor = (
-            Color(out.cursor.r, out.cursor.g, out.cursor.b)
-            if out.cursor_has_value
-            else None
-        )
+        cursor = Color(out.cursor.r, out.cursor.g, out.cursor.b) if out.cursor_has_value else None
         return Colors(
             background=Color(out.background.r, out.background.g, out.background.b),
             foreground=Color(out.foreground.r, out.foreground.g, out.foreground.b),
@@ -168,9 +165,7 @@ class Snapshot:
         """Returns cursor info if viewport has value, else None."""
         has_value = ffi.new("bool *")
         result = lib.ghostty_render_state_get(
-            self._state._handle,
-            lib.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE,
-            has_value,
+            self._state._handle, lib.GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, has_value
         )
         check_result(result)
         if not has_value[0]:
@@ -265,9 +260,7 @@ class Row:
         dirty_val = ffi.new("bool *", value)
         check_result(
             lib.ghostty_render_state_row_set(
-                self._state._row_iter_ptr[0],
-                lib.GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY,
-                dirty_val,
+                self._state._row_iter_ptr[0], lib.GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, dirty_val
             )
         )
 
@@ -300,9 +293,7 @@ class CellIterator:
         graphemes_len = ffi.new("uint32_t *")
         check_result(
             lib.ghostty_render_state_row_cells_get(
-                cells_handle,
-                lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
-                graphemes_len,
+                cells_handle, lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, graphemes_len
             )
         )
 
@@ -311,9 +302,7 @@ class CellIterator:
             buf = ffi.new("uint32_t[]", graphemes_len[0])
             check_result(
                 lib.ghostty_render_state_row_cells_get(
-                    cells_handle,
-                    lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
-                    buf,
+                    cells_handle, lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, buf
                 )
             )
             text = "".join(chr(buf[i]) for i in range(graphemes_len[0]))
@@ -322,25 +311,19 @@ class CellIterator:
         fg_result = lib.ghostty_render_state_row_cells_get(
             cells_handle, lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, fg_rgb
         )
-        fg: Color | None = (
-            Color(fg_rgb.r, fg_rgb.g, fg_rgb.b) if fg_result == 0 else None
-        )
+        fg: Color | None = Color(fg_rgb.r, fg_rgb.g, fg_rgb.b) if fg_result == 0 else None
 
         bg_rgb = ffi.new("GhosttyColorRgb *")
         bg_result = lib.ghostty_render_state_row_cells_get(
             cells_handle, lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, bg_rgb
         )
-        bg: Color | None = (
-            Color(bg_rgb.r, bg_rgb.g, bg_rgb.b) if bg_result == 0 else None
-        )
+        bg: Color | None = Color(bg_rgb.r, bg_rgb.g, bg_rgb.b) if bg_result == 0 else None
 
         style_out = ffi.new("GhosttyStyle *")
         style_out.size = ffi.sizeof("GhosttyStyle")
         check_result(
             lib.ghostty_render_state_row_cells_get(
-                cells_handle,
-                lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE,
-                style_out,
+                cells_handle, lib.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, style_out
             )
         )
 

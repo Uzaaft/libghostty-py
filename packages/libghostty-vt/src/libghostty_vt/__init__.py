@@ -1,6 +1,7 @@
 """Pythonic Python bindings for libghostty-vt."""
 
 from libghostty_cffi import ffi, lib
+
 from libghostty_vt.errors import (
     GhosttyError,
     InvalidValueError,
@@ -25,7 +26,7 @@ from libghostty_vt.render import (
 from libghostty_vt.sgr import SgrAttribute, SgrParser
 from libghostty_vt.terminal import Terminal
 
-__all__ = [
+__all__ = (
     "Cell",
     "CellStyle",
     "Color",
@@ -51,4 +52,4 @@ __all__ = [
     "Terminal",
     "ffi",
     "lib",
-]
+)
