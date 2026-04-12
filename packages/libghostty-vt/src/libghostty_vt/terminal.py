@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from libghostty_cffi import ffi, lib
-from libghostty_vt.errors import NoValueError, check_result
 
+from libghostty_vt.errors import GhosttyError, check_result
 
 if TYPE_CHECKING:
     from cffi import FFI
@@ -217,7 +217,7 @@ class Terminal:
         result = lib.ghostty_terminal_get(
             self._handle, lib.GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND, out
         )
-        if result == -4:  # GHOSTTY_NO_VALUE
+        if result == GhosttyError.NO_VALUE:
             return None
         check_result(result)
         return (out.r, out.g, out.b)
@@ -228,7 +228,7 @@ class Terminal:
         result = lib.ghostty_terminal_get(
             self._handle, lib.GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND, out
         )
-        if result == -4:  # GHOSTTY_NO_VALUE
+        if result == GhosttyError.NO_VALUE:
             return None
         check_result(result)
         return (out.r, out.g, out.b)

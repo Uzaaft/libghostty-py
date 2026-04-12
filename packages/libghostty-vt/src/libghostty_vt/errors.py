@@ -2,37 +2,54 @@
 
 from __future__ import annotations
 
+from enum import IntEnum
+from typing import TYPE_CHECKING
 
-class GhosttyError(Exception):
+if TYPE_CHECKING:
+    from typing_extensions import Never
+
+
+class BaseGhosttyError(Exception):
     """Base exception for libghostty errors."""
 
 
-class OutOfMemoryError(GhosttyError):
+class OutOfMemoryError(BaseGhosttyError, MemoryError):
     """Allocation failed."""
 
 
-class InvalidValueError(GhosttyError):
+class InvalidValueError(BaseGhosttyError, ValueError):
     """Invalid argument or state."""
 
 
-class OutOfSpaceError(GhosttyError):
+class OutOfSpaceError(BaseGhosttyError, MemoryError):
     """Buffer too small for the requested operation."""
 
 
-class NoValueError(GhosttyError):
+class NoValueError(BaseGhosttyError, ValueError):
     """Requested data has no value."""
+
+
+class GhosttyError(IntEnum):
+    OUT_OF_MEMORY = -1
+    INVALID_VALUE = -2
+    OUT_OF_SPACE = -3
+    NO_VALUE = -4
+
+    @classmethod
+    def _missing_(cls, value: int) -> Never:
+        raise BaseGhosttyError(f"unknown error code: {value}")
+
+    def raise_error(self) -> Never:
+        raise {
+            self.OUT_OF_MEMORY: OutOfMemoryError("out of memory"),
+            self.INVALID_VALUE: InvalidValueError("invalid value"),
+            self.OUT_OF_SPACE: OutOfSpaceError("out of space"),
+            self.NO_VALUE: NoValueError("no value"),
+        }[self.value]
 
 
 def check_result(result: int) -> None:
     """Raise an appropriate exception if result is not GHOSTTY_SUCCESS (0)."""
     if result == 0:
         return
-    if result == -1:
-        raise OutOfMemoryError("out of memory")
-    if result == -2:
-        raise InvalidValueError("invalid value")
-    if result == -3:
-        raise OutOfSpaceError("out of space")
-    if result == -4:
-        raise NoValueError("no value")
-    raise GhosttyError(f"unknown error code: {result}")
+    GhosttyError(result).raise_error()
