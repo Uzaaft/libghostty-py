@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from libghostty_cffi import ffi, lib
-from libghostty_vt.errors import check_result
 
+from libghostty_vt.errors import GhosttyError, check_result
 
 if TYPE_CHECKING:
     from cffi import FFI
@@ -100,7 +100,7 @@ class KeyEncoder:
         buf = ffi.new("char[]", buf_size)
         out_len = ffi.new("size_t *")
         result = lib.ghostty_key_encoder_encode(self._handle, event.handle, buf, buf_size, out_len)
-        if result == -3:  # OUT_OF_SPACE
+        if result == GhosttyError.OUT_OF_SPACE:
             buf = ffi.new("char[]", out_len[0])
             check_result(
                 lib.ghostty_key_encoder_encode(self._handle, event.handle, buf, out_len[0], out_len)
