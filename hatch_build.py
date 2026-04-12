@@ -13,48 +13,37 @@ installation.
 from __future__ import annotations
 
 import os
-import platform
 import shutil
-import subprocess
+import subprocess as sp
 import sys
+from contextlib import suppress
 from pathlib import Path
+from typing import Any, final
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
+from libghostty_cffi._ffi import LIB_NAME
 
-_LIB_NAMES = {
-    "Linux": "libghostty-vt.so",
-    "Darwin": "libghostty-vt.dylib",
-    "Windows": "ghostty-vt.dll",
-}
-
-
-def _lib_name() -> str:
-    return _LIB_NAMES.get(platform.system(), "libghostty-vt.so")
+REPO_PARENT = Path(__file__).parents[1]
 
 
 def _find_via_env() -> Path | None:
-    env = os.environ.get("LIBGHOSTTY_VT_PATH")
-    if env:
-        p = Path(env)
-        if p.is_file():
-            return p
+    if (env := os.getenv("LIBGHOSTTY_VT_PATH")) and (path := Path(env)).is_file():
+        return path
     return None
 
 
 def _find_via_pkg_config() -> Path | None:
-    try:
-        result = subprocess.run(
-            ["pkg-config", "--variable=libdir", "libghostty-vt"],
+    with suppress(sp.CalledProcessError, FileNotFoundError):
+        result = sp.run(
+            ("pkg-config", "--variable=libdir", "libghostty-vt"),
             capture_output=True,
             text=True,
             check=True,
         )
         libdir = Path(result.stdout.strip())
-        candidate = libdir / _lib_name()
+        candidate = libdir / LIB_NAME
         if candidate.is_file():
             return candidate
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
     return None
 
 
@@ -64,75 +53,62 @@ def _build_from_source() -> Path:
     Expects GHOSTTY_SRC_DIR env var pointing to a ghostty checkout,
     or a `ghostty` directory as a sibling of this project.
     """
-    src_dir = os.environ.get("GHOSTTY_SRC_DIR")
-    if not src_dir:
+    if not (src_dir := os.getenv("GHOSTTY_SRC_DIR")):
         # Try common sibling locations
-        for candidate in [
-            Path(__file__).parent.parent / "ghostty",
-            Path(__file__).parent.parent / "ghostty-org" / "ghostty",
-        ]:
+        for candidate in (REPO_PARENT / "ghostty", REPO_PARENT / "ghostty-org" / "ghostty"):
             if (candidate / "build.zig").is_file():
                 src_dir = str(candidate)
                 break
 
-    if not src_dir or not Path(src_dir, "build.zig").is_file():
-        raise RuntimeError(
+    if not (src_dir and Path(src_dir, "build.zig").is_file()):
+        msg = (
             "Cannot find ghostty source to build libghostty-vt. "
             "Set LIBGHOSTTY_VT_PATH to a pre-built library, or "
             "set GHOSTTY_SRC_DIR to a ghostty repository checkout."
         )
+        raise RuntimeError(msg)
 
     print(f"Building libghostty-vt from {src_dir}", file=sys.stderr)
-    subprocess.run(
-        [
-            "zig",
-            "build",
-            "-Demit-lib-vt=true",
-            "-Doptimize=ReleaseFast",
-        ],
-        cwd=src_dir,
-        check=True,
+    _ = sp.run(
+        ("zig", "build", "-Demit-lib-vt=true", "-Doptimize=ReleaseFast"), cwd=src_dir, check=True
     )
 
-    lib_path = Path(src_dir) / "zig-out" / "lib" / _lib_name()
+    lib_path = Path(src_dir) / "zig-out" / "lib" / LIB_NAME
     if not lib_path.is_file():
-        raise RuntimeError(f"Build succeeded but {lib_path} not found. Check zig build output.")
+        msg = f"Build succeeded but {lib_path} not found. Check zig build output."
+        raise RuntimeError(msg)
     return lib_path
 
 
 def _resolve_library() -> Path:
     """Find or build the shared library, returning the path to the file."""
-    path = _find_via_env()
-    if path:
+    if path := _find_via_env():
         return path
-
-    path = _find_via_pkg_config()
-    if path:
+    if path := _find_via_pkg_config():
         return path
-
     return _build_from_source()
 
 
-class NativeLibraryHook(BuildHookInterface):
+@final
+class NativeLibraryHook(BuildHookInterface[Any]):
     """Bundle libghostty-vt shared library into the wheel."""
 
     PLUGIN_NAME = "custom"
 
-    def initialize(self, version: str, build_data: dict) -> None:  # type: ignore[override]
+    def initialize(self, version: str, build_data: dict[str, Any]) -> None:
         if self.target_name != "wheel" or version == "editable":
             return
 
         lib_path = _resolve_library()
         pkg_dir = Path(self.root) / "src" / "libghostty_cffi"
-        lib_name = _lib_name()
 
         # Resolve symlinks to get the actual file
         real_path = lib_path.resolve() if lib_path.is_symlink() else lib_path
 
         # Copy the real file with the canonical unversioned name
-        dest = pkg_dir / lib_name
-        shutil.copy2(real_path, dest)
-        build_data["force_include"][str(dest)] = f"libghostty_cffi/{lib_name}"
+        dest = pkg_dir / LIB_NAME
+        _ = shutil.copy2(real_path, dest)
+        build_data["force_include"][str(dest)] = f"libghostty_cffi/{LIB_NAME}"
 
         # Mark this as a platform-specific wheel
         build_data["pure_python"] = False
@@ -142,5 +118,5 @@ class NativeLibraryHook(BuildHookInterface):
         # Remove any previously bundled libraries
         pkg_dir = Path(self.root) / "src" / "libghostty_cffi"
         for suffix in (".so", ".dylib", ".dll"):
-            for f in pkg_dir.glob(f"*ghostty*{suffix}*"):
-                f.unlink(missing_ok=True)
+            for file in pkg_dir.glob(f"*ghostty*{suffix}*"):
+                file.unlink(missing_ok=True)
