@@ -11,44 +11,35 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import cffi
 
-from libghostty_cffi._cdef import CDEF
+ffi = cffi.FFI()
+ffi.cdef((Path(__file__).parent / "cdef.h").read_text())
 
-if TYPE_CHECKING:
-    from cffi import FFI as FFIType
-
-ffi: FFIType = cffi.FFI()
-ffi.cdef(CDEF)
-
-_LIB_NAMES = {
+LIB_NAME = {
     "Linux": "libghostty-vt.so",
     "Darwin": "libghostty-vt.dylib",
     "Windows": "ghostty-vt.dll",
-}
+}.get(platform.system(), "libghostty-vt.so")
 
 _LIB_ENV = "LIBGHOSTTY_VT_PATH"
 
 
 def _find_library() -> str:
     # 1. Explicit env var
-    env_path = os.environ.get(_LIB_ENV)
-    if env_path and os.path.isfile(env_path):
+    env_path = os.getenv(_LIB_ENV)
+    if env_path and Path(env_path).is_file():
         return env_path
 
     # 2. Bundled alongside this package (installed via wheel)
-    lib_name = _LIB_NAMES.get(platform.system(), "libghostty-vt.so")
-    bundled = Path(__file__).parent / lib_name
+    bundled = Path(__file__).parent / LIB_NAME
     if bundled.is_file():
         return str(bundled)
 
     # 3. Let the OS loader find it (LD_LIBRARY_PATH, system paths, etc.)
     #    ffi.dlopen with just the name will use dlopen(3) search semantics.
-    if env_path:
-        return env_path
-    return lib_name
+    return env_path or LIB_NAME
 
 
 lib = ffi.dlopen(_find_library())

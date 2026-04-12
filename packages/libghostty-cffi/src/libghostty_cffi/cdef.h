@@ -1,6 +1,3 @@
-"""CFFI C declarations for the libghostty-vt API."""
-
-CDEF = """
 /* ------------------------------------------------------------------ */
 /* Result codes                                                       */
 /* ------------------------------------------------------------------ */
@@ -1092,7 +1089,7 @@ typedef enum {
 } GhosttyRenderStateRowOption;
 
 typedef enum {
-    GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_INVALID       = 0,
+    GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_INVALID        = 0,
     GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW            = 1,
     GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE          = 2,
     GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN  = 3,
@@ -1138,4 +1135,3 @@ GhosttyResult ghostty_render_state_row_cells_select(GhosttyRenderStateRowCells c
 GhosttyResult ghostty_render_state_row_cells_get(GhosttyRenderStateRowCells cells,
                                                  GhosttyRenderStateRowCellsData data, void *out);
 void ghostty_render_state_row_cells_free(GhosttyRenderStateRowCells cells);
-"""

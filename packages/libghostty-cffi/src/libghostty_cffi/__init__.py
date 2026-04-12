@@ -2,4 +2,4 @@
 
 from libghostty_cffi._ffi import ffi, lib
 
-__all__ = ["ffi", "lib"]
+__all__ = ("ffi", "lib")
