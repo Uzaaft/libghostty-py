@@ -7,8 +7,7 @@ and iterating over rows and cells with resolved colors, styles, and graphemes.
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from libghostty_cffi import ffi, lib
 
@@ -33,22 +32,19 @@ class CursorStyle(enum.IntEnum):
     BLOCK_HOLLOW = 3
 
 
-@dataclass(frozen=True, slots=True)
-class Color:
+class Color(NamedTuple):
     r: int
     g: int
     b: int
 
 
-@dataclass(frozen=True, slots=True)
-class Colors:
+class Colors(NamedTuple):
     background: Color
     foreground: Color
     cursor: Color | None
 
 
-@dataclass(frozen=True, slots=True)
-class CursorInfo:
+class CursorInfo(NamedTuple):
     x: int
     y: int
     visible: bool
@@ -56,8 +52,7 @@ class CursorInfo:
     style: CursorStyle
 
 
-@dataclass(frozen=True, slots=True)
-class CellStyle:
+class CellStyle(NamedTuple):
     bold: bool
     italic: bool
     faint: bool
@@ -66,8 +61,7 @@ class CellStyle:
     underline: int
 
 
-@dataclass(frozen=True, slots=True)
-class Cell:
+class Cell(NamedTuple):
     text: str
     fg: Color | None
     bg: Color | None

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from libghostty_cffi import ffi, lib
 
@@ -15,8 +14,7 @@ if TYPE_CHECKING:
     from cffi import FFI
 
 
-@dataclass(frozen=True, slots=True)
-class SgrAttribute:
+class SgrAttribute(NamedTuple):
     """A parsed SGR attribute."""
 
     tag: int
