@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from libghostty_cffi import ffi, lib
+
 from libghostty_vt.errors import check_result
 
 if TYPE_CHECKING:
