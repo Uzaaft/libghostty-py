@@ -2,17 +2,17 @@
 
 from libghostty_cffi import ffi, lib
 
-from libghostty_vt.errors import (
+from .errors import (
     GhosttyError,
     InvalidValueError,
     NoValueError,
     OutOfMemoryError,
     OutOfSpaceError,
 )
-from libghostty_vt.key import KeyEncoder, KeyEvent
-from libghostty_vt.mouse import MouseEncoder, MouseEvent
-from libghostty_vt.osc import OscCommand, OscParser
-from libghostty_vt.render import (
+from .key import KeyEncoder, KeyEvent
+from .mouse import MouseEncoder, MouseEvent
+from .osc import OscCommand, OscParser
+from .render import (
     Cell,
     CellStyle,
     Color,
@@ -23,8 +23,8 @@ from libghostty_vt.render import (
     RenderState,
     Snapshot,
 )
-from libghostty_vt.sgr import SgrAttribute, SgrParser
-from libghostty_vt.terminal import Terminal
+from .sgr import SgrAttribute, SgrParser
+from .terminal import Terminal
 
 __all__ = (
     "Cell",
