@@ -122,7 +122,7 @@ class Snapshot:
         return self
 
     def __exit__(self, *exc: object) -> None:
-        self.set_dirty(Dirty.CLEAN)
+        self.dirty = Dirty.CLEAN
 
     @property
     def dirty(self) -> Dirty:
@@ -134,7 +134,8 @@ class Snapshot:
         )
         return Dirty(out[0])
 
-    def set_dirty(self, value: Dirty) -> None:
+    @dirty.setter
+    def dirty(self, value: Dirty) -> None:
         dirty_val = ffi.new("GhosttyRenderStateDirty *", int(value))
         check_result(
             lib.ghostty_render_state_set(
@@ -250,7 +251,8 @@ class Row:
         )
         return bool(out[0])
 
-    def set_dirty(self, value: bool) -> None:
+    @dirty.setter
+    def dirty(self, value: bool) -> None:
         dirty_val = ffi.new("bool *", value)
         check_result(
             lib.ghostty_render_state_row_set(
