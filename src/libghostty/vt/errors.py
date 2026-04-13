@@ -36,7 +36,7 @@ class GhosttyError(IntEnum):
     NO_VALUE = -4
 
     @classmethod
-    def _missing_(cls, value: int) -> Never:
+    def _missing_(cls, value: object) -> Never:
         raise BaseGhosttyError(f"unknown error code: {value}")
 
     def raise_error(self) -> Never:
@@ -45,7 +45,7 @@ class GhosttyError(IntEnum):
             self.INVALID_VALUE: InvalidValueError("invalid value"),
             self.OUT_OF_SPACE: OutOfSpaceError("out of space"),
             self.NO_VALUE: NoValueError("no value"),
-        }[self.value]
+        }[self]
 
 
 def check_result(result: int) -> None:
