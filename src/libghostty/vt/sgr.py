@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NamedTuple
 
-from libghostty_cffi import ffi, lib
-
-from libghostty_vt.errors import check_result
+from libghostty._cffi import ffi, lib
+from libghostty.vt.errors import check_result
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

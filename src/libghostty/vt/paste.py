@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from libghostty_cffi import ffi, lib
-
-from libghostty_vt.errors import check_result
+from libghostty._cffi import ffi, lib
+from libghostty.vt.errors import check_result
 
 
 def is_safe(data: bytes | str) -> bool:

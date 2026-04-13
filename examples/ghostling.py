@@ -24,14 +24,15 @@ import termios
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from libghostty_cffi import ffi, lib
-from libghostty_vt import Terminal
-from libghostty_vt.errors import check_result
-from libghostty_vt.key import KeyEncoder, KeyEvent
-from libghostty_vt.render import Color, CursorStyle, Dirty, RenderState
 from PyQt6.QtCore import QSocketNotifier, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QKeyEvent, QPainter, QResizeEvent
 from PyQt6.QtWidgets import QApplication, QWidget
+
+from libghostty._cffi import ffi, lib
+from libghostty.vt import Terminal
+from libghostty.vt.errors import check_result
+from libghostty.vt.key import KeyEncoder, KeyEvent
+from libghostty.vt.render import Color, CursorStyle, Dirty, RenderState
 
 if TYPE_CHECKING:
     from PyQt6.QtGui import QPaintEvent

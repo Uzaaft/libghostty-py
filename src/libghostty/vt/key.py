@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from libghostty_cffi import ffi, lib
-
-from libghostty_vt.errors import GhosttyError, check_result
+from libghostty._cffi import ffi, lib
+from libghostty.vt.errors import GhosttyError, check_result
 
 if TYPE_CHECKING:
     from cffi import FFI
 
-    from libghostty_vt.terminal import Terminal
+    from libghostty.vt.terminal import Terminal
 
 
 class KeyEvent:

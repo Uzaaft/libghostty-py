@@ -106,7 +106,7 @@ class NativeLibraryHook(BuildHookInterface[Any]):
             return
 
         lib_path = _resolve_library()
-        pkg_dir = Path(self.root) / "src" / "libghostty_cffi"
+        pkg_dir = Path(self.root) / "src" / "libghostty" / "_cffi"
 
         # Resolve symlinks to get the actual file
         real_path = lib_path.resolve() if lib_path.is_symlink() else lib_path
@@ -114,7 +114,7 @@ class NativeLibraryHook(BuildHookInterface[Any]):
         # Copy the real file with the canonical unversioned name
         dest = pkg_dir / LIB_NAME
         _ = shutil.copy2(real_path, dest)
-        build_data["force_include"][str(dest)] = f"libghostty_cffi/{LIB_NAME}"
+        build_data["force_include"][str(dest)] = f"libghostty/_cffi/{LIB_NAME}"
 
         # Mark this as a platform-specific wheel
         build_data["pure_python"] = False

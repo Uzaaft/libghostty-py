@@ -1,7 +1,3 @@
-"""Pythonic Python bindings for libghostty-vt."""
-
-from libghostty_cffi import ffi, lib
-
 from .errors import (
     GhosttyError,
     InvalidValueError,
@@ -50,6 +46,4 @@ __all__ = (
     "SgrParser",
     "Snapshot",
     "Terminal",
-    "ffi",
-    "lib",
 )

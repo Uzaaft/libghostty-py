@@ -7,13 +7,6 @@ import cffi
 
 def test_cdef_parses() -> None:
     """The CDEF string must be valid CFFI input."""
-    cdef_path = (
-        Path(__file__).parents[1]
-        / "packages"
-        / "libghostty-cffi"
-        / "src"
-        / "libghostty_cffi"
-        / "cdef.h"
-    )
+    cdef_path = Path(__file__).parents[1] / "src" / "libghostty" / "_cffi" / "cdef.h"
     f = cffi.FFI()
     f.cdef(cdef_path.read_text())
