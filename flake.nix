@@ -37,22 +37,25 @@
           env = {
             LIBGHOSTTY_VT_PATH = "${libghostty-vt}/lib/libghostty-vt.so.0";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [
+              dbus
               glib
               libGL
+              libXrender
+              libxcb
+              libxcb-image
+              libxcb-keysyms
+              libxcb-render-util
+              libxcb-wm
+              zlib
+            ] ++ lib.optionals stdenv.hostPlatform.isLinux [
               fontconfig
               freetype
               libX11
               libXext
-              libXrender
-              libxcb
-              libxcb-wm
-              libxcb-image
-              libxcb-keysyms
-              libxcb-render-util
-              dbus
               libxkbcommon
               wayland
-            ]);
+            ]
+          );
           };
 
           shellHook = ''
