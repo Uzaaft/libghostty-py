@@ -20,6 +20,10 @@ dependencies = [
 [tool.hatch.build.hooks.custom]
 path = "hatch_build.py"
 
+[tool.libghostty]
+ghostty-repository = "https://github.com/ghostty-org/ghostty"
+ghostty-commit = "b0f8276658fbcc75318d2125d40146074a3fc505"
+
 [project.optional-dependencies]
 examples = ["PyQt6>=6.6"]
 
