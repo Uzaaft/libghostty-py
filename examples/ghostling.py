@@ -23,6 +23,7 @@ import sys
 import termios
 import time
 from contextlib import suppress
+from functools import cache
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QSocketNotifier, Qt, QTimer
@@ -165,8 +166,9 @@ def _spawn_shell(cols: int, rows: int) -> tuple[int, int]:
     return master_fd, child_pid
 
 
-def _to_qcolor(c: Color, fallback: QColor) -> QColor:
-    return QColor(c.r, c.g, c.b) if c is not None else fallback
+@cache
+def _qcolor(color: Color) -> QColor:
+    return QColor(color.r, color.g, color.b)
 
 
 _DEFAULT_BG = QColor(30, 30, 46)
@@ -421,9 +423,9 @@ class GhostlingWidget(QWidget):
 
         with self._render.update(self._terminal) as snap:
             colors = snap.colors
-            bg_color = QColor(colors.background.r, colors.background.g, colors.background.b)
-            fg_color = QColor(colors.foreground.r, colors.foreground.g, colors.foreground.b)
-            painter.fillRect(self.rect(), bg_color)
+            bg_color = colors.background
+            fg_color = colors.foreground
+            painter.fillRect(self.rect(), _qcolor(bg_color))
 
             cw = self._cell_width
             ch = self._cell_height
@@ -434,14 +436,16 @@ class GhostlingWidget(QWidget):
                 for col_idx, cell in enumerate(row.cells()):
                     x = col_idx * cw
 
-                    fg = _to_qcolor(cell.fg, fg_color)
-                    bg = _to_qcolor(cell.bg, bg_color)
+                    cell_fg = cell.fg or fg_color
+                    cell_bg = cell.bg or bg_color
 
                     if cell.style.inverse:
-                        fg, bg = bg, fg
+                        cell_fg, cell_bg = cell_bg, cell_fg
 
-                    if bg != bg_color or cell.style.inverse:
-                        painter.fillRect(int(x), int(y), int(cw) + 1, int(ch), bg)
+                    if cell_bg != bg_color or cell.style.inverse:
+                        painter.fillRect(
+                            int(x), int(y), int(cw) + 1, int(ch), _qcolor(cell_bg)
+                        )
 
                     if cell.text and cell.text != " ":
                         font = self._font
@@ -452,7 +456,7 @@ class GhostlingWidget(QWidget):
                         elif cell.style.italic:
                             font = self._font_italic
                         painter.setFont(font)
-                        painter.setPen(fg)
+                        painter.setPen(_qcolor(cell_fg))
                         painter.drawText(int(x), int(y + ascent), cell.text)
 
                 row.dirty = False
