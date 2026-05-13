@@ -184,6 +184,13 @@ class GhostlingWidget(QWidget):
         # Font setup
         self._font = QFont("monospace", 13)
         self._font.setStyleHint(QFont.StyleHint.Monospace)
+        self._font_bold = QFont(self._font)
+        self._font_bold.setBold(True)
+        self._font_italic = QFont(self._font)
+        self._font_italic.setItalic(True)
+        self._font_bold_italic = QFont(self._font)
+        self._font_bold_italic.setBold(True)
+        self._font_bold_italic.setItalic(True)
         metrics = QFontMetricsF(self._font)
         self._cell_width = metrics.horizontalAdvance("M")
         self._cell_height = metrics.height()
@@ -437,16 +444,16 @@ class GhostlingWidget(QWidget):
                         painter.fillRect(int(x), int(y), int(cw) + 1, int(ch), bg)
 
                     if cell.text and cell.text != " ":
-                        font = QFont(self._font)
-                        if cell.style.bold:
-                            font.setBold(True)
-                        if cell.style.italic:
-                            font.setItalic(True)
+                        font = self._font
+                        if cell.style.bold and cell.style.italic:
+                            font = self._font_bold_italic
+                        elif cell.style.bold:
+                            font = self._font_bold
+                        elif cell.style.italic:
+                            font = self._font_italic
                         painter.setFont(font)
                         painter.setPen(fg)
                         painter.drawText(int(x), int(y + ascent), cell.text)
-                        if cell.style.bold or cell.style.italic:
-                            painter.setFont(self._font)
 
                 row.dirty = False
 
