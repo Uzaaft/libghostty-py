@@ -27,13 +27,26 @@ from contextlib import suppress
 from functools import cache
 from typing import TYPE_CHECKING
 
-from libghostty_vt._cffi import ffi, lib
 from PyQt6.QtCore import QSocketNotifier, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QImage, QKeyEvent, QPainter, QResizeEvent
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from libghostty.vt import Color, CursorStyle, Dirty, KeyEncoder, KeyEvent, RenderState, Terminal
-from libghostty.vt.errors import check_result
+from libghostty.vt import (
+    Color,
+    CursorStyle,
+    DeviceAttributes,
+    Dirty,
+    Key,
+    KeyAction,
+    KeyEncoder,
+    KeyEvent,
+    KittyImage,
+    KittyImageCompression,
+    KittyImageFormat,
+    RenderState,
+    SizeReport,
+    Terminal,
+)
 
 if TYPE_CHECKING:
     from PyQt6.QtGui import QPaintEvent
@@ -44,86 +57,86 @@ if TYPE_CHECKING:
 # on a US layout. The Kitty keyboard protocol needs this. '\0' for keys
 # without a natural codepoint (arrows, function keys, etc.).
 
-_KEY_MAP: list[tuple[int, int, str]] = [
-    (Qt.Key.Key_A, lib.GHOSTTY_KEY_A, "a"),
-    (Qt.Key.Key_B, lib.GHOSTTY_KEY_B, "b"),
-    (Qt.Key.Key_C, lib.GHOSTTY_KEY_C, "c"),
-    (Qt.Key.Key_D, lib.GHOSTTY_KEY_D, "d"),
-    (Qt.Key.Key_E, lib.GHOSTTY_KEY_E, "e"),
-    (Qt.Key.Key_F, lib.GHOSTTY_KEY_F, "f"),
-    (Qt.Key.Key_G, lib.GHOSTTY_KEY_G, "g"),
-    (Qt.Key.Key_H, lib.GHOSTTY_KEY_H, "h"),
-    (Qt.Key.Key_I, lib.GHOSTTY_KEY_I, "i"),
-    (Qt.Key.Key_J, lib.GHOSTTY_KEY_J, "j"),
-    (Qt.Key.Key_K, lib.GHOSTTY_KEY_K, "k"),
-    (Qt.Key.Key_L, lib.GHOSTTY_KEY_L, "l"),
-    (Qt.Key.Key_M, lib.GHOSTTY_KEY_M, "m"),
-    (Qt.Key.Key_N, lib.GHOSTTY_KEY_N, "n"),
-    (Qt.Key.Key_O, lib.GHOSTTY_KEY_O, "o"),
-    (Qt.Key.Key_P, lib.GHOSTTY_KEY_P, "p"),
-    (Qt.Key.Key_Q, lib.GHOSTTY_KEY_Q, "q"),
-    (Qt.Key.Key_R, lib.GHOSTTY_KEY_R, "r"),
-    (Qt.Key.Key_S, lib.GHOSTTY_KEY_S, "s"),
-    (Qt.Key.Key_T, lib.GHOSTTY_KEY_T, "t"),
-    (Qt.Key.Key_U, lib.GHOSTTY_KEY_U, "u"),
-    (Qt.Key.Key_V, lib.GHOSTTY_KEY_V, "v"),
-    (Qt.Key.Key_W, lib.GHOSTTY_KEY_W, "w"),
-    (Qt.Key.Key_X, lib.GHOSTTY_KEY_X, "x"),
-    (Qt.Key.Key_Y, lib.GHOSTTY_KEY_Y, "y"),
-    (Qt.Key.Key_Z, lib.GHOSTTY_KEY_Z, "z"),
-    (Qt.Key.Key_0, lib.GHOSTTY_KEY_DIGIT_0, "0"),
-    (Qt.Key.Key_1, lib.GHOSTTY_KEY_DIGIT_1, "1"),
-    (Qt.Key.Key_2, lib.GHOSTTY_KEY_DIGIT_2, "2"),
-    (Qt.Key.Key_3, lib.GHOSTTY_KEY_DIGIT_3, "3"),
-    (Qt.Key.Key_4, lib.GHOSTTY_KEY_DIGIT_4, "4"),
-    (Qt.Key.Key_5, lib.GHOSTTY_KEY_DIGIT_5, "5"),
-    (Qt.Key.Key_6, lib.GHOSTTY_KEY_DIGIT_6, "6"),
-    (Qt.Key.Key_7, lib.GHOSTTY_KEY_DIGIT_7, "7"),
-    (Qt.Key.Key_8, lib.GHOSTTY_KEY_DIGIT_8, "8"),
-    (Qt.Key.Key_9, lib.GHOSTTY_KEY_DIGIT_9, "9"),
-    (Qt.Key.Key_Space, lib.GHOSTTY_KEY_SPACE, " "),
-    (Qt.Key.Key_Return, lib.GHOSTTY_KEY_ENTER, "\0"),
-    (Qt.Key.Key_Enter, lib.GHOSTTY_KEY_NUMPAD_ENTER, "\0"),
-    (Qt.Key.Key_Tab, lib.GHOSTTY_KEY_TAB, "\0"),
-    (Qt.Key.Key_Backspace, lib.GHOSTTY_KEY_BACKSPACE, "\0"),
-    (Qt.Key.Key_Delete, lib.GHOSTTY_KEY_DELETE, "\0"),
-    (Qt.Key.Key_Escape, lib.GHOSTTY_KEY_ESCAPE, "\0"),
-    (Qt.Key.Key_Up, lib.GHOSTTY_KEY_ARROW_UP, "\0"),
-    (Qt.Key.Key_Down, lib.GHOSTTY_KEY_ARROW_DOWN, "\0"),
-    (Qt.Key.Key_Left, lib.GHOSTTY_KEY_ARROW_LEFT, "\0"),
-    (Qt.Key.Key_Right, lib.GHOSTTY_KEY_ARROW_RIGHT, "\0"),
-    (Qt.Key.Key_Home, lib.GHOSTTY_KEY_HOME, "\0"),
-    (Qt.Key.Key_End, lib.GHOSTTY_KEY_END, "\0"),
-    (Qt.Key.Key_PageUp, lib.GHOSTTY_KEY_PAGE_UP, "\0"),
-    (Qt.Key.Key_PageDown, lib.GHOSTTY_KEY_PAGE_DOWN, "\0"),
-    (Qt.Key.Key_Insert, lib.GHOSTTY_KEY_INSERT, "\0"),
-    (Qt.Key.Key_Minus, lib.GHOSTTY_KEY_MINUS, "-"),
-    (Qt.Key.Key_Equal, lib.GHOSTTY_KEY_EQUAL, "="),
-    (Qt.Key.Key_BracketLeft, lib.GHOSTTY_KEY_BRACKET_LEFT, "["),
-    (Qt.Key.Key_BracketRight, lib.GHOSTTY_KEY_BRACKET_RIGHT, "]"),
-    (Qt.Key.Key_Backslash, lib.GHOSTTY_KEY_BACKSLASH, "\\"),
-    (Qt.Key.Key_Semicolon, lib.GHOSTTY_KEY_SEMICOLON, ";"),
-    (Qt.Key.Key_Apostrophe, lib.GHOSTTY_KEY_QUOTE, "'"),
-    (Qt.Key.Key_Comma, lib.GHOSTTY_KEY_COMMA, ","),
-    (Qt.Key.Key_Period, lib.GHOSTTY_KEY_PERIOD, "."),
-    (Qt.Key.Key_Slash, lib.GHOSTTY_KEY_SLASH, "/"),
-    (Qt.Key.Key_QuoteLeft, lib.GHOSTTY_KEY_BACKQUOTE, "`"),
-    (Qt.Key.Key_F1, lib.GHOSTTY_KEY_F1, "\0"),
-    (Qt.Key.Key_F2, lib.GHOSTTY_KEY_F2, "\0"),
-    (Qt.Key.Key_F3, lib.GHOSTTY_KEY_F3, "\0"),
-    (Qt.Key.Key_F4, lib.GHOSTTY_KEY_F4, "\0"),
-    (Qt.Key.Key_F5, lib.GHOSTTY_KEY_F5, "\0"),
-    (Qt.Key.Key_F6, lib.GHOSTTY_KEY_F6, "\0"),
-    (Qt.Key.Key_F7, lib.GHOSTTY_KEY_F7, "\0"),
-    (Qt.Key.Key_F8, lib.GHOSTTY_KEY_F8, "\0"),
-    (Qt.Key.Key_F9, lib.GHOSTTY_KEY_F9, "\0"),
-    (Qt.Key.Key_F10, lib.GHOSTTY_KEY_F10, "\0"),
-    (Qt.Key.Key_F11, lib.GHOSTTY_KEY_F11, "\0"),
-    (Qt.Key.Key_F12, lib.GHOSTTY_KEY_F12, "\0"),
+_KEY_MAP: list[tuple[int, Key, str]] = [
+    (Qt.Key.Key_A, Key.A, "a"),
+    (Qt.Key.Key_B, Key.B, "b"),
+    (Qt.Key.Key_C, Key.C, "c"),
+    (Qt.Key.Key_D, Key.D, "d"),
+    (Qt.Key.Key_E, Key.E, "e"),
+    (Qt.Key.Key_F, Key.F, "f"),
+    (Qt.Key.Key_G, Key.G, "g"),
+    (Qt.Key.Key_H, Key.H, "h"),
+    (Qt.Key.Key_I, Key.I, "i"),
+    (Qt.Key.Key_J, Key.J, "j"),
+    (Qt.Key.Key_K, Key.K, "k"),
+    (Qt.Key.Key_L, Key.L, "l"),
+    (Qt.Key.Key_M, Key.M, "m"),
+    (Qt.Key.Key_N, Key.N, "n"),
+    (Qt.Key.Key_O, Key.O, "o"),
+    (Qt.Key.Key_P, Key.P, "p"),
+    (Qt.Key.Key_Q, Key.Q, "q"),
+    (Qt.Key.Key_R, Key.R, "r"),
+    (Qt.Key.Key_S, Key.S, "s"),
+    (Qt.Key.Key_T, Key.T, "t"),
+    (Qt.Key.Key_U, Key.U, "u"),
+    (Qt.Key.Key_V, Key.V, "v"),
+    (Qt.Key.Key_W, Key.W, "w"),
+    (Qt.Key.Key_X, Key.X, "x"),
+    (Qt.Key.Key_Y, Key.Y, "y"),
+    (Qt.Key.Key_Z, Key.Z, "z"),
+    (Qt.Key.Key_0, Key.DIGIT_0, "0"),
+    (Qt.Key.Key_1, Key.DIGIT_1, "1"),
+    (Qt.Key.Key_2, Key.DIGIT_2, "2"),
+    (Qt.Key.Key_3, Key.DIGIT_3, "3"),
+    (Qt.Key.Key_4, Key.DIGIT_4, "4"),
+    (Qt.Key.Key_5, Key.DIGIT_5, "5"),
+    (Qt.Key.Key_6, Key.DIGIT_6, "6"),
+    (Qt.Key.Key_7, Key.DIGIT_7, "7"),
+    (Qt.Key.Key_8, Key.DIGIT_8, "8"),
+    (Qt.Key.Key_9, Key.DIGIT_9, "9"),
+    (Qt.Key.Key_Space, Key.SPACE, " "),
+    (Qt.Key.Key_Return, Key.ENTER, "\0"),
+    (Qt.Key.Key_Enter, Key.NUMPAD_ENTER, "\0"),
+    (Qt.Key.Key_Tab, Key.TAB, "\0"),
+    (Qt.Key.Key_Backspace, Key.BACKSPACE, "\0"),
+    (Qt.Key.Key_Delete, Key.DELETE, "\0"),
+    (Qt.Key.Key_Escape, Key.ESCAPE, "\0"),
+    (Qt.Key.Key_Up, Key.ARROW_UP, "\0"),
+    (Qt.Key.Key_Down, Key.ARROW_DOWN, "\0"),
+    (Qt.Key.Key_Left, Key.ARROW_LEFT, "\0"),
+    (Qt.Key.Key_Right, Key.ARROW_RIGHT, "\0"),
+    (Qt.Key.Key_Home, Key.HOME, "\0"),
+    (Qt.Key.Key_End, Key.END, "\0"),
+    (Qt.Key.Key_PageUp, Key.PAGE_UP, "\0"),
+    (Qt.Key.Key_PageDown, Key.PAGE_DOWN, "\0"),
+    (Qt.Key.Key_Insert, Key.INSERT, "\0"),
+    (Qt.Key.Key_Minus, Key.MINUS, "-"),
+    (Qt.Key.Key_Equal, Key.EQUAL, "="),
+    (Qt.Key.Key_BracketLeft, Key.BRACKET_LEFT, "["),
+    (Qt.Key.Key_BracketRight, Key.BRACKET_RIGHT, "]"),
+    (Qt.Key.Key_Backslash, Key.BACKSLASH, "\\"),
+    (Qt.Key.Key_Semicolon, Key.SEMICOLON, ";"),
+    (Qt.Key.Key_Apostrophe, Key.QUOTE, "'"),
+    (Qt.Key.Key_Comma, Key.COMMA, ","),
+    (Qt.Key.Key_Period, Key.PERIOD, "."),
+    (Qt.Key.Key_Slash, Key.SLASH, "/"),
+    (Qt.Key.Key_QuoteLeft, Key.BACKQUOTE, "`"),
+    (Qt.Key.Key_F1, Key.F1, "\0"),
+    (Qt.Key.Key_F2, Key.F2, "\0"),
+    (Qt.Key.Key_F3, Key.F3, "\0"),
+    (Qt.Key.Key_F4, Key.F4, "\0"),
+    (Qt.Key.Key_F5, Key.F5, "\0"),
+    (Qt.Key.Key_F6, Key.F6, "\0"),
+    (Qt.Key.Key_F7, Key.F7, "\0"),
+    (Qt.Key.Key_F8, Key.F8, "\0"),
+    (Qt.Key.Key_F9, Key.F9, "\0"),
+    (Qt.Key.Key_F10, Key.F10, "\0"),
+    (Qt.Key.Key_F11, Key.F11, "\0"),
+    (Qt.Key.Key_F12, Key.F12, "\0"),
 ]
 
 # Build a fast lookup dict: Qt key code -> (ghostty_key, unshifted_codepoint)
-_QT_KEY_LOOKUP: dict[int, tuple[int, str]] = {qt: (gk, ucp) for qt, gk, ucp in _KEY_MAP}
+_QT_KEY_LOOKUP: dict[int, tuple[Key, str]] = {qt: (gk, ucp) for qt, gk, ucp in _KEY_MAP}
 
 _MODS_SHIFT = 1 << 0
 _MODS_CTRL = 1 << 1
@@ -230,35 +243,9 @@ class GhostlingWidget(QWidget):
             int(self._cell_height),
         )
 
-        # Install terminal effects so VT query responses flow back
-        self._write_pty_cb = ffi.callback("GhosttyTerminalWritePtyFn", self._on_write_pty)
-        check_result(
-            lib.ghostty_terminal_set(
-                self._terminal.handle,
-                lib.GHOSTTY_TERMINAL_OPT_WRITE_PTY,
-                self._write_pty_cb,
-            )
-        )
-
-        # Device attributes callback (DA1/DA2/DA3)
-        self._da_cb = ffi.callback("GhosttyTerminalDeviceAttributesFn", self._on_device_attributes)
-        check_result(
-            lib.ghostty_terminal_set(
-                self._terminal.handle,
-                lib.GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES,
-                self._da_cb,
-            )
-        )
-
-        # Size callback (XTWINOPS CSI 14/16/18 t)
-        self._size_cb = ffi.callback("GhosttyTerminalSizeFn", self._on_size_query)
-        check_result(
-            lib.ghostty_terminal_set(
-                self._terminal.handle,
-                lib.GHOSTTY_TERMINAL_OPT_SIZE,
-                self._size_cb,
-            )
-        )
+        self._terminal.set_write_pty_callback(self._write_to_pty)
+        self._terminal.set_device_attributes_callback(self._device_attributes)
+        self._terminal.set_size_callback(self._size_report)
 
         # Render state — initial sync from terminal
         self._render = RenderState()
@@ -304,35 +291,16 @@ class GhostlingWidget(QWidget):
         self._update_window_size()
         self._update_title()
 
-    def _on_write_pty(
-        self, _terminal: object, _userdata: object, data: object, length: int
-    ) -> None:
-        buf = ffi.buffer(data, length)[:]
-        self._write_to_pty(buf)
+    def _device_attributes(self) -> DeviceAttributes:
+        return DeviceAttributes()
 
-    def _on_device_attributes(
-        self, _terminal: object, _userdata: object, out_attrs: object
-    ) -> bool:
-        # DA1: VT220-level with common features
-        out_attrs.primary.conformance_level = 62  # VT220
-        out_attrs.primary.features[0] = 1  # COLUMNS_132
-        out_attrs.primary.features[1] = 6  # SELECTIVE_ERASE
-        out_attrs.primary.features[2] = 22  # ANSI_COLOR
-        out_attrs.primary.num_features = 3
-        # DA2: VT220, version 1
-        out_attrs.secondary.device_type = 1  # VT220
-        out_attrs.secondary.firmware_version = 1
-        out_attrs.secondary.rom_cartridge = 0
-        # DA3: default unit id
-        out_attrs.tertiary.unit_id = 0
-        return True
-
-    def _on_size_query(self, _terminal: object, _userdata: object, out_size: object) -> bool:
-        out_size.rows = self._grid_rows
-        out_size.columns = self._grid_cols
-        out_size.cell_width = int(self._cell_width)
-        out_size.cell_height = int(self._cell_height)
-        return True
+    def _size_report(self) -> SizeReport:
+        return SizeReport(
+            rows=self._grid_rows,
+            columns=self._grid_cols,
+            cell_width=int(self._cell_width),
+            cell_height=int(self._cell_height),
+        )
 
     def _on_pty_readable(self) -> None:
         try:
@@ -381,7 +349,7 @@ class GhostlingWidget(QWidget):
         # Sync encoder with current terminal modes
         self._key_encoder.sync_from_terminal(self._terminal)
 
-        self._key_event.action = lib.GHOSTTY_KEY_ACTION_PRESS
+        self._key_event.action = KeyAction.PRESS
         self._key_event.key = ghostty_key
         self._key_event.mods = mods
 
@@ -506,171 +474,57 @@ class GhostlingWidget(QWidget):
         painter.end()
 
     def _draw_kitty_images(self, painter: QPainter) -> None:
-        graphics = ffi.new("GhosttyKittyGraphics *")
-        result = lib.ghostty_terminal_get(
-            self._terminal.handle,
-            lib.GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS,
-            graphics,
-        )
-        if result != lib.GHOSTTY_SUCCESS or graphics[0] == ffi.NULL:
-            return
+        for placement in self._terminal.kitty_image_placements():
+            qimage = self._kitty_qimage(placement.image)
+            if qimage.isNull():
+                continue
 
-        iterator = ffi.new("GhosttyKittyGraphicsPlacementIterator *")
-        check_result(lib.ghostty_kitty_graphics_placement_iterator_new(ffi.NULL, iterator))
-        try:
-            check_result(
-                lib.ghostty_kitty_graphics_get(
-                    graphics[0],
-                    lib.GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR,
-                    iterator,
-                )
+            source = qimage.copy(
+                placement.source_x,
+                placement.source_y,
+                placement.source_width,
+                placement.source_height,
             )
-            layer = ffi.new(
-                "GhosttyKittyPlacementLayer *",
-                lib.GHOSTTY_KITTY_PLACEMENT_LAYER_ABOVE_TEXT,
-            )
-            check_result(
-                lib.ghostty_kitty_graphics_placement_iterator_set(
-                    iterator[0],
-                    lib.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPTION_LAYER,
-                    layer,
-                )
+            painter.drawImage(
+                int(placement.viewport_col * self._cell_width),
+                int(placement.viewport_row * self._cell_height),
+                source.scaled(
+                    placement.pixel_width,
+                    placement.pixel_height,
+                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                ),
             )
 
-            while lib.ghostty_kitty_graphics_placement_next(iterator[0]):
-                self._draw_kitty_image_placement(painter, graphics[0], iterator[0])
-        finally:
-            lib.ghostty_kitty_graphics_placement_iterator_free(iterator[0])
-
-    def _draw_kitty_image_placement(
-        self,
-        painter: QPainter,
-        graphics: object,
-        iterator: object,
-    ) -> None:
-        image_id = ffi.new("uint32_t *")
-        check_result(
-            lib.ghostty_kitty_graphics_placement_get(
-                iterator,
-                lib.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID,
-                image_id,
-            )
-        )
-        image = lib.ghostty_kitty_graphics_image(graphics, image_id[0])
-        if image == ffi.NULL:
-            return
-
-        info = ffi.new("GhosttyKittyGraphicsPlacementRenderInfo *")
-        info.size = ffi.sizeof("GhosttyKittyGraphicsPlacementRenderInfo")
-        result = lib.ghostty_kitty_graphics_placement_render_info(
-            iterator,
-            image,
-            self._terminal.handle,
-            info,
-        )
-        if result != lib.GHOSTTY_SUCCESS or not info.viewport_visible:
-            return
-
-        qimage = self._kitty_qimage(image)
-        if qimage.isNull():
-            return
-
-        source = qimage.copy(
-            int(info.source_x),
-            int(info.source_y),
-            int(info.source_width),
-            int(info.source_height),
-        )
-        painter.drawImage(
-            int(info.viewport_col * self._cell_width),
-            int(info.viewport_row * self._cell_height),
-            source.scaled(
-                int(info.pixel_width),
-                int(info.pixel_height),
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            ),
-        )
-
-    def _kitty_qimage(self, image: object) -> QImage:
-        width = ffi.new("uint32_t *")
-        height = ffi.new("uint32_t *")
-        image_format = ffi.new("GhosttyKittyImageFormat *")
-        compression = ffi.new("GhosttyKittyImageCompression *")
-        data_ptr = ffi.new("uint8_t **")
-        data_len = ffi.new("size_t *")
-
-        check_result(
-            lib.ghostty_kitty_graphics_image_get(
-                image,
-                lib.GHOSTTY_KITTY_IMAGE_DATA_WIDTH,
-                width,
-            )
-        )
-        check_result(
-            lib.ghostty_kitty_graphics_image_get(
-                image,
-                lib.GHOSTTY_KITTY_IMAGE_DATA_HEIGHT,
-                height,
-            )
-        )
-        check_result(
-            lib.ghostty_kitty_graphics_image_get(
-                image,
-                lib.GHOSTTY_KITTY_IMAGE_DATA_FORMAT,
-                image_format,
-            )
-        )
-        check_result(
-            lib.ghostty_kitty_graphics_image_get(
-                image,
-                lib.GHOSTTY_KITTY_IMAGE_DATA_COMPRESSION,
-                compression,
-            )
-        )
-        check_result(
-            lib.ghostty_kitty_graphics_image_get(
-                image,
-                lib.GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR,
-                data_ptr,
-            )
-        )
-        check_result(
-            lib.ghostty_kitty_graphics_image_get(
-                image,
-                lib.GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN,
-                data_len,
-            )
-        )
-
-        data = bytes(ffi.buffer(data_ptr[0], data_len[0]))
-        if compression[0] == lib.GHOSTTY_KITTY_IMAGE_COMPRESSION_ZLIB_DEFLATE:
+    def _kitty_qimage(self, image: KittyImage) -> QImage:
+        data = image.data
+        if image.compression == KittyImageCompression.ZLIB_DEFLATE:
             data = zlib.decompress(data)
 
-        if image_format[0] == lib.GHOSTTY_KITTY_IMAGE_FORMAT_PNG:
+        if image.format == KittyImageFormat.PNG:
             return QImage.fromData(data)
-        if image_format[0] == lib.GHOSTTY_KITTY_IMAGE_FORMAT_RGBA:
+        if image.format == KittyImageFormat.RGBA:
             return QImage(
                 data,
-                width[0],
-                height[0],
-                width[0] * 4,
+                image.width,
+                image.height,
+                image.width * 4,
                 QImage.Format.Format_RGBA8888,
             ).copy()
-        if image_format[0] == lib.GHOSTTY_KITTY_IMAGE_FORMAT_RGB:
+        if image.format == KittyImageFormat.RGB:
             return QImage(
                 data,
-                width[0],
-                height[0],
-                width[0] * 3,
+                image.width,
+                image.height,
+                image.width * 3,
                 QImage.Format.Format_RGB888,
             ).copy()
-        if image_format[0] == lib.GHOSTTY_KITTY_IMAGE_FORMAT_GRAY:
+        if image.format == KittyImageFormat.GRAY:
             return QImage(
                 data,
-                width[0],
-                height[0],
-                width[0],
+                image.width,
+                image.height,
+                image.width,
                 QImage.Format.Format_Grayscale8,
             ).copy()
         return QImage()
