@@ -374,12 +374,10 @@ class GhostlingWidget(QWidget):
         try:
             data = self._pty.read()
         except OSError:
-            self._notifier.setEnabled(False)
-            self.close()
+            self._close_from_pty_eof()
             return
         if not data:
-            self._notifier.setEnabled(False)
-            self.close()
+            self._close_from_pty_eof()
             return
 
         self._terminal.write(data)
@@ -392,6 +390,10 @@ class GhostlingWidget(QWidget):
 
     def _write_to_pty(self, data: bytes) -> None:
         self._pty.write(data)
+
+    def _close_from_pty_eof(self) -> None:
+        self._notifier.setEnabled(False)
+        self.close()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if encoded := self._key_encoder.encode(event, self._terminal):
