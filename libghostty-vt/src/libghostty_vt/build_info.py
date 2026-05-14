@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from libghostty._cffi import ffi, lib
-from libghostty.vt.errors import check_result
+from libghostty_vt._cffi import ffi, lib
+from libghostty_vt.errors import check_result
 
 
 def check_build_info(field: int) -> bool:
