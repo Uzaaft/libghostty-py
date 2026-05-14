@@ -13,7 +13,11 @@ STRUCT_UNION_RE = re.compile(r"typedef\s+(?:struct|union)\s*\{([^}]+)\}\s*(\w+)\
 FUNC_TYPEDEF_RE = re.compile(
     r"^typedef\s+(\w+)\s*\(\s*\*\s*(\w+)\s*\)\s*\(([^)]*)\)\s*;", re.MULTILINE
 )
-FUNCTION_RE = re.compile(r"^(\w+)\s+(\w+)\s*\(([^)]*)\)\s*;", re.MULTILINE)
+FUNCTION_RE = re.compile(
+    r"^(?:(?P<ptr_return>(?:const\s+)?\w+\s*\*)\s*(?P<ptr_name>\w+)"
+    r"|(?P<return>\w+)\s+(?P<name>\w+))\s*\((?P<params>[^)]*)\)\s*;",
+    re.MULTILINE,
+)
 COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 ARRAY_FIELD_RE = re.compile(r"^(\w+(?:\s*\*)*)\s+(\w+)\s*\[\s*(\w+)\s*\]$")
 ARRAY_RE = re.compile(r"^(.+)\[(\d+)\]$")
@@ -35,6 +39,9 @@ class Enum(NamedTuple):
 
     def generate(self) -> str:
         return f"{self.name}: TypeAlias = Literal[{', '.join(mem.value for mem in self.members)}]"
+
+    def generate_protocol_fields(self) -> list[str]:
+        return [f"    {member.name}: {self.name}" for member in self.members]
 
 
 class StructOrUnion(NamedTuple):
@@ -75,6 +82,17 @@ class Function(NamedTuple):
         params: list[str] = []
         for param_type, param_name in self.params:
             py_type = c_to_python_type(param_type)
+            param_name = safe_python_name(param_name)
+            params.append(f"{param_name}: {py_type}" if param_name else py_type)
+        ret_type = c_to_python_type(self.return_type)
+        params_str = ", ".join(params)
+        return f"def {self.name}({params_str}) -> {ret_type}: ..."
+
+    def generate_protocol_method(self) -> str:
+        params: list[str] = ["self"]
+        for param_type, param_name in self.params:
+            py_type = c_to_python_type(param_type)
+            param_name = safe_python_name(param_name)
             params.append(f"{param_name}: {py_type}" if param_name else py_type)
         ret_type = c_to_python_type(self.return_type)
         params_str = ", ".join(params)
@@ -202,13 +220,14 @@ def parse_functions(content: str) -> list[Function]:
     results: list[Function] = []
 
     for m in FUNCTION_RE.finditer(content):
-        name = m[2]
+        name = m["ptr_name"] or m["name"]
         # Skip function pointer typedefs that match the function regex pattern
         # (they're already captured by FUNC_TYPEDEF_RE above)
         if name.startswith("(*"):
             continue
 
-        results.append(Function(m[1], name, parse_params(m[3])))
+        return_type = m["ptr_return"] or m["return"]
+        results.append(Function(return_type, name, parse_params(m["params"])))
 
     return results
 
@@ -243,10 +262,20 @@ C_TO_PY_TYPE_MAPPING = {
     "void": "None",
 }
 
+RESERVED_PARAMETER_NAMES = {
+    "len": "length",
+}
+
+
+def safe_python_name(name: str) -> str:
+    return RESERVED_PARAMETER_NAMES.get(name, name)
+
 
 def c_to_python_type(c_type: str) -> str:
     c_type = c_type.removeprefix("const").strip()
     if c_type == "void*":
+        return "object"
+    if c_type.endswith("*"):
         return "object"
     c_type = c_type.rstrip("*").strip()
 
@@ -264,13 +293,22 @@ def c_to_python_type(c_type: str) -> str:
 def generate_stubs(definitions: list[StubSource]) -> str:
     lines = [
         "from collections.abc import Callable\n",
-        "from typing import Literal, TypeAlias\n",
+        "from typing import Literal, Protocol, TypeAlias\n",
         "\n",
     ]
 
     for defn in definitions:
         lines.append(defn.generate())
         lines.append("\n")
+
+    protocol_lines = ["\nclass GhosttyVtLib(Protocol):"]
+    for defn in definitions:
+        if isinstance(defn, Enum):
+            protocol_lines.extend(defn.generate_protocol_fields())
+        if isinstance(defn, Function):
+            protocol_lines.append("    " + defn.generate_protocol_method())
+    lines.append("\n".join(protocol_lines))
+    lines.append("\n")
 
     return "".join(lines)
 
