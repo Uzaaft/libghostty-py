@@ -21,6 +21,7 @@ import signal
 import struct
 import sys
 import termios
+import time
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
@@ -171,6 +172,7 @@ def _to_qcolor(c: Color, fallback: QColor) -> QColor:
 _DEFAULT_BG = QColor(30, 30, 46)
 _DEFAULT_FG = QColor(205, 214, 244)
 _CURSOR_COLOR = QColor(245, 194, 231)
+_FPS_COLOR = QColor(250, 250, 0)
 
 
 class GhostlingWidget(QWidget):
@@ -262,6 +264,15 @@ class GhostlingWidget(QWidget):
         self._blink_timer = QTimer(self)
         self._blink_timer.timeout.connect(self._on_blink)
         self._blink_timer.start(530)
+
+        # FPS counter state. The timer keeps the overlay fresh even when the
+        # terminal contents are otherwise idle.
+        self._fps_frame_count = 0
+        self._fps_last_update = time.monotonic()
+        self._fps = 0.0
+        self._fps_timer = QTimer(self)
+        self._fps_timer.timeout.connect(self.update)
+        self._fps_timer.start(250)
 
         # Widget config
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -390,6 +401,14 @@ class GhostlingWidget(QWidget):
         super().resizeEvent(event)
 
     def paintEvent(self, event: QPaintEvent) -> None:
+        now = time.monotonic()
+        self._fps_frame_count += 1
+        elapsed = now - self._fps_last_update
+        if elapsed >= 1.0:
+            self._fps = self._fps_frame_count / elapsed
+            self._fps_frame_count = 0
+            self._fps_last_update = now
+
         painter = QPainter(self)
         painter.setFont(self._font)
 
@@ -450,6 +469,12 @@ class GhostlingWidget(QWidget):
                     painter.setBrush(Qt.BrushStyle.NoBrush)
                     painter.setPen(_CURSOR_COLOR)
                     painter.drawRect(int(cursor_x), int(cursor_y), int(cw), int(ch))
+
+            painter.setFont(self._font)
+            painter.setPen(_FPS_COLOR)
+            fps_text = f"{self._fps:.1f} FPS"
+            fps_width = QFontMetricsF(self._font).horizontalAdvance(fps_text)
+            painter.drawText(int(self.width() - fps_width - 8), int(ascent) + 8, fps_text)
 
         painter.end()
 
