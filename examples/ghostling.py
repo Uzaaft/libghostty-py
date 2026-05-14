@@ -344,8 +344,7 @@ class GhostlingWidget(QWidget):
         self._pty.write(data)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        encoded = self._key_encoder.encode(event, self._terminal)
-        if encoded:
+        if encoded := self._key_encoder.encode(event, self._terminal):
             self._write_to_pty(encoded)
         event.accept()
 
