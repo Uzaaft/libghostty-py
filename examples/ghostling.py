@@ -22,12 +22,13 @@ import struct
 import sys
 import termios
 import time
+import zlib
 from contextlib import suppress
 from functools import cache
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QSocketNotifier, Qt, QTimer
-from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QKeyEvent, QPainter, QResizeEvent
+from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QImage, QKeyEvent, QPainter, QResizeEvent
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from libghostty import ffi, lib
@@ -148,12 +149,20 @@ def _qt_mods_to_ghostty(qt_mods: Qt.KeyboardModifier) -> int:
 # PTY helpers
 
 
-def _set_pty_size(fd: int, cols: int, rows: int) -> None:
-    winsize = struct.pack("HHHH", rows, cols, 0, 0)
+def _set_pty_size(
+    fd: int,
+    cols: int,
+    rows: int,
+    cell_width_px: int,
+    cell_height_px: int,
+) -> None:
+    width_px = cols * cell_width_px
+    height_px = rows * cell_height_px
+    winsize = struct.pack("HHHH", rows, cols, width_px, height_px)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
-def _spawn_shell(cols: int, rows: int) -> tuple[int, int]:
+def _spawn_shell(cols: int, rows: int, cell_width_px: int, cell_height_px: int) -> tuple[int, int]:
     """Fork a child process with a PTY running the user's shell."""
     child_pid, master_fd = pty.fork()
     if child_pid == 0:
@@ -162,7 +171,7 @@ def _spawn_shell(cols: int, rows: int) -> tuple[int, int]:
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
         os.execvpe(shell, [shell], env)
-    _set_pty_size(master_fd, cols, rows)
+    _set_pty_size(master_fd, cols, rows, cell_width_px, cell_height_px)
     return master_fd, child_pid
 
 
@@ -213,6 +222,7 @@ class GhostlingWidget(QWidget):
         self._terminal.set_foreground_color(
             _DEFAULT_FG.red(), _DEFAULT_FG.green(), _DEFAULT_FG.blue()
         )
+        self._terminal.set_kitty_image_storage_limit(64 * 1024 * 1024)
 
         # Set cell pixel dimensions so size reports work correctly
         self._terminal.resize(
@@ -261,7 +271,14 @@ class GhostlingWidget(QWidget):
         self._key_event = KeyEvent()
 
         # PTY
-        self._master_fd, self._child_pid = _spawn_shell(self._grid_cols, self._grid_rows)
+        cell_w = int(self._cell_width)
+        cell_h = int(self._cell_height)
+        self._master_fd, self._child_pid = _spawn_shell(
+            self._grid_cols,
+            self._grid_rows,
+            cell_w,
+            cell_h,
+        )
         flags = fcntl.fcntl(self._master_fd, fcntl.F_GETFL)
         fcntl.fcntl(self._master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
@@ -370,12 +387,11 @@ class GhostlingWidget(QWidget):
         self._key_event.key = ghostty_key
         self._key_event.mods = mods
 
-        # Set consumed mods
-        lib.ghostty_key_event_set_consumed_mods(self._key_event.handle, consumed)
+        self._key_event.consumed_mods = consumed
 
         # Set unshifted codepoint for Kitty keyboard protocol
         if unshifted_cp != "\0":
-            lib.ghostty_key_event_set_unshifted_codepoint(self._key_event.handle, ord(unshifted_cp))
+            self._key_event.unshifted_codepoint = ord(unshifted_cp)
 
         # Attach UTF-8 text from Qt (the character after platform processing)
         text = event.text()
@@ -404,7 +420,7 @@ class GhostlingWidget(QWidget):
             cell_w = int(self._cell_width)
             cell_h = int(self._cell_height)
             self._terminal.resize(new_cols, new_rows, cell_w, cell_h)
-            _set_pty_size(self._master_fd, new_cols, new_rows)
+            _set_pty_size(self._master_fd, new_cols, new_rows, cell_w, cell_h)
             self._render.update(self._terminal)
 
         super().resizeEvent(event)
@@ -481,6 +497,8 @@ class GhostlingWidget(QWidget):
                     painter.setPen(_CURSOR_COLOR)
                     painter.drawRect(int(cursor_x), int(cursor_y), int(cw), int(ch))
 
+            self._draw_kitty_images(painter)
+
             painter.setFont(self._font)
             painter.setPen(_FPS_COLOR)
             fps_text = f"{self._fps:.1f} FPS"
@@ -488,6 +506,176 @@ class GhostlingWidget(QWidget):
             painter.drawText(int(self.width() - fps_width - 8), int(ascent) + 8, fps_text)
 
         painter.end()
+
+    def _draw_kitty_images(self, painter: QPainter) -> None:
+        graphics = ffi.new("GhosttyKittyGraphics *")
+        result = lib.ghostty_terminal_get(
+            self._terminal.handle,
+            lib.GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS,
+            graphics,
+        )
+        if result != lib.GHOSTTY_SUCCESS or graphics[0] == ffi.NULL:
+            return
+
+        iterator = ffi.new("GhosttyKittyGraphicsPlacementIterator *")
+        check_result(lib.ghostty_kitty_graphics_placement_iterator_new(ffi.NULL, iterator))
+        try:
+            check_result(
+                lib.ghostty_kitty_graphics_get(
+                    graphics[0],
+                    lib.GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR,
+                    iterator,
+                )
+            )
+            layer = ffi.new(
+                "GhosttyKittyPlacementLayer *",
+                lib.GHOSTTY_KITTY_PLACEMENT_LAYER_ABOVE_TEXT,
+            )
+            check_result(
+                lib.ghostty_kitty_graphics_placement_iterator_set(
+                    iterator[0],
+                    lib.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPTION_LAYER,
+                    layer,
+                )
+            )
+
+            while lib.ghostty_kitty_graphics_placement_next(iterator[0]):
+                self._draw_kitty_image_placement(painter, graphics[0], iterator[0])
+        finally:
+            lib.ghostty_kitty_graphics_placement_iterator_free(iterator[0])
+
+    def _draw_kitty_image_placement(
+        self,
+        painter: QPainter,
+        graphics: object,
+        iterator: object,
+    ) -> None:
+        image_id = ffi.new("uint32_t *")
+        check_result(
+            lib.ghostty_kitty_graphics_placement_get(
+                iterator,
+                lib.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID,
+                image_id,
+            )
+        )
+        image = lib.ghostty_kitty_graphics_image(graphics, image_id[0])
+        if image == ffi.NULL:
+            return
+
+        info = ffi.new("GhosttyKittyGraphicsPlacementRenderInfo *")
+        info.size = ffi.sizeof("GhosttyKittyGraphicsPlacementRenderInfo")
+        result = lib.ghostty_kitty_graphics_placement_render_info(
+            iterator,
+            image,
+            self._terminal.handle,
+            info,
+        )
+        if result != lib.GHOSTTY_SUCCESS or not info.viewport_visible:
+            return
+
+        qimage = self._kitty_qimage(image)
+        if qimage.isNull():
+            return
+
+        source = qimage.copy(
+            int(info.source_x),
+            int(info.source_y),
+            int(info.source_width),
+            int(info.source_height),
+        )
+        painter.drawImage(
+            int(info.viewport_col * self._cell_width),
+            int(info.viewport_row * self._cell_height),
+            source.scaled(
+                int(info.pixel_width),
+                int(info.pixel_height),
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ),
+        )
+
+    def _kitty_qimage(self, image: object) -> QImage:
+        width = ffi.new("uint32_t *")
+        height = ffi.new("uint32_t *")
+        image_format = ffi.new("GhosttyKittyImageFormat *")
+        compression = ffi.new("GhosttyKittyImageCompression *")
+        data_ptr = ffi.new("uint8_t **")
+        data_len = ffi.new("size_t *")
+
+        check_result(
+            lib.ghostty_kitty_graphics_image_get(
+                image,
+                lib.GHOSTTY_KITTY_IMAGE_DATA_WIDTH,
+                width,
+            )
+        )
+        check_result(
+            lib.ghostty_kitty_graphics_image_get(
+                image,
+                lib.GHOSTTY_KITTY_IMAGE_DATA_HEIGHT,
+                height,
+            )
+        )
+        check_result(
+            lib.ghostty_kitty_graphics_image_get(
+                image,
+                lib.GHOSTTY_KITTY_IMAGE_DATA_FORMAT,
+                image_format,
+            )
+        )
+        check_result(
+            lib.ghostty_kitty_graphics_image_get(
+                image,
+                lib.GHOSTTY_KITTY_IMAGE_DATA_COMPRESSION,
+                compression,
+            )
+        )
+        check_result(
+            lib.ghostty_kitty_graphics_image_get(
+                image,
+                lib.GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR,
+                data_ptr,
+            )
+        )
+        check_result(
+            lib.ghostty_kitty_graphics_image_get(
+                image,
+                lib.GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN,
+                data_len,
+            )
+        )
+
+        data = bytes(ffi.buffer(data_ptr[0], data_len[0]))
+        if compression[0] == lib.GHOSTTY_KITTY_IMAGE_COMPRESSION_ZLIB_DEFLATE:
+            data = zlib.decompress(data)
+
+        if image_format[0] == lib.GHOSTTY_KITTY_IMAGE_FORMAT_PNG:
+            return QImage.fromData(data)
+        if image_format[0] == lib.GHOSTTY_KITTY_IMAGE_FORMAT_RGBA:
+            return QImage(
+                data,
+                width[0],
+                height[0],
+                width[0] * 4,
+                QImage.Format.Format_RGBA8888,
+            ).copy()
+        if image_format[0] == lib.GHOSTTY_KITTY_IMAGE_FORMAT_RGB:
+            return QImage(
+                data,
+                width[0],
+                height[0],
+                width[0] * 3,
+                QImage.Format.Format_RGB888,
+            ).copy()
+        if image_format[0] == lib.GHOSTTY_KITTY_IMAGE_FORMAT_GRAY:
+            return QImage(
+                data,
+                width[0],
+                height[0],
+                width[0],
+                QImage.Format.Format_Grayscale8,
+            ).copy()
+        return QImage()
 
     def _on_blink(self) -> None:
         self._blink_visible = not self._blink_visible
