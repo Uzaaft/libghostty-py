@@ -46,6 +46,10 @@
           ];
         });
         libghostty-vt = overrideLibghosttyVt ghostty.packages.${system}.libghostty-vt;
+        libghostty-vt-shared-library =
+          if pkgs.stdenv.hostPlatform.isDarwin
+          then "libghostty-vt.dylib"
+          else "libghostty-vt.so.0";
       in
       {
         packages = {
@@ -64,7 +68,7 @@
           ];
 
           env = {
-            LIBGHOSTTY_VT_PATH = "${libghostty-vt}/lib/libghostty-vt.so.0";
+            LIBGHOSTTY_VT_PATH = "${libghostty-vt}/lib/${libghostty-vt-shared-library}";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [
               dbus
               glib
@@ -89,7 +93,7 @@
 
           shellHook = ''
             echo "libghostty-py dev shell"
-            echo "libghostty-vt: ${libghostty-vt}/lib/libghostty-vt.so.0"
+            echo "libghostty-vt: ${libghostty-vt}/lib/${libghostty-vt-shared-library}"
           '';
         };
       }
