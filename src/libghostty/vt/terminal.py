@@ -245,3 +245,160 @@ class Terminal:
         check_result(
             lib.ghostty_terminal_set(self._handle, lib.GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, color)
         )
+
+    def get_kitty_image_storage_limit(self) -> int | None:
+        """Get the active screen's Kitty graphics image storage limit in bytes."""
+        out = ffi.new("uint64_t *")
+        result = lib.ghostty_terminal_get(
+            self._handle,
+            lib.GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_STORAGE_LIMIT,
+            out,
+        )
+        if result == GhosttyError.NO_VALUE:
+            return None
+        check_result(result)
+        return int(out[0])
+
+    @property
+    def kitty_image_storage_limit(self) -> int | None:
+        """Active screen's Kitty graphics image storage limit in bytes."""
+        return self.get_kitty_image_storage_limit()
+
+    @kitty_image_storage_limit.setter
+    def kitty_image_storage_limit(self, limit_bytes: int) -> None:
+        self.set_kitty_image_storage_limit(limit_bytes)
+
+    def is_kitty_image_from_file_allowed(self) -> bool | None:
+        """Return whether Kitty graphics may load images from regular files."""
+        out = ffi.new("bool *")
+        result = lib.ghostty_terminal_get(
+            self._handle,
+            lib.GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_FILE,
+            out,
+        )
+        if result == GhosttyError.NO_VALUE:
+            return None
+        check_result(result)
+        return bool(out[0])
+
+    @property
+    def kitty_image_from_file_allowed(self) -> bool | None:
+        """Whether Kitty graphics may load images from regular files."""
+        return self.is_kitty_image_from_file_allowed()
+
+    @kitty_image_from_file_allowed.setter
+    def kitty_image_from_file_allowed(self, allowed: bool) -> None:
+        self.set_kitty_image_from_file_allowed(allowed)
+
+    def is_kitty_image_from_temp_file_allowed(self) -> bool | None:
+        """Return whether Kitty graphics may load images from temporary files."""
+        out = ffi.new("bool *")
+        result = lib.ghostty_terminal_get(
+            self._handle,
+            lib.GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_TEMP_FILE,
+            out,
+        )
+        if result == GhosttyError.NO_VALUE:
+            return None
+        check_result(result)
+        return bool(out[0])
+
+    @property
+    def kitty_image_from_temp_file_allowed(self) -> bool | None:
+        """Whether Kitty graphics may load images from temporary files."""
+        return self.is_kitty_image_from_temp_file_allowed()
+
+    @kitty_image_from_temp_file_allowed.setter
+    def kitty_image_from_temp_file_allowed(self, allowed: bool) -> None:
+        self.set_kitty_image_from_temp_file_allowed(allowed)
+
+    def is_kitty_image_from_shared_memory_allowed(self) -> bool | None:
+        """Return whether Kitty graphics may load images from shared memory."""
+        out = ffi.new("bool *")
+        result = lib.ghostty_terminal_get(
+            self._handle,
+            lib.GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_SHARED_MEM,
+            out,
+        )
+        if result == GhosttyError.NO_VALUE:
+            return None
+        check_result(result)
+        return bool(out[0])
+
+    @property
+    def kitty_image_from_shared_memory_allowed(self) -> bool | None:
+        """Whether Kitty graphics may load images from shared memory."""
+        return self.is_kitty_image_from_shared_memory_allowed()
+
+    @kitty_image_from_shared_memory_allowed.setter
+    def kitty_image_from_shared_memory_allowed(self, allowed: bool) -> None:
+        self.set_kitty_image_from_shared_memory_allowed(allowed)
+
+    def set_kitty_image_storage_limit(self, limit_bytes: int) -> None:
+        """Set the maximum bytes available for Kitty graphics image storage.
+
+        A limit of zero disables the Kitty graphics protocol and clears stored images.
+        """
+        limit = ffi.new("uint64_t *", limit_bytes)
+        check_result(
+            lib.ghostty_terminal_set(
+                self._handle,
+                lib.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT,
+                limit,
+            )
+        )
+
+    def set_kitty_image_from_file_allowed(self, allowed: bool) -> None:
+        """Enable or disable Kitty graphics image loading from regular files."""
+        value = ffi.new("bool *", allowed)
+        check_result(
+            lib.ghostty_terminal_set(
+                self._handle,
+                lib.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE,
+                value,
+            )
+        )
+
+    def set_kitty_image_from_temp_file_allowed(self, allowed: bool) -> None:
+        """Enable or disable Kitty graphics image loading from temporary files."""
+        value = ffi.new("bool *", allowed)
+        check_result(
+            lib.ghostty_terminal_set(
+                self._handle,
+                lib.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE,
+                value,
+            )
+        )
+
+    def set_kitty_image_from_shared_memory_allowed(self, allowed: bool) -> None:
+        """Enable or disable Kitty graphics image loading from shared memory."""
+        value = ffi.new("bool *", allowed)
+        check_result(
+            lib.ghostty_terminal_set(
+                self._handle,
+                lib.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM,
+                value,
+            )
+        )
+
+    def configure_kitty_graphics(
+        self,
+        *,
+        storage_limit_bytes: int | None = None,
+        allow_file: bool | None = None,
+        allow_temp_file: bool | None = None,
+        allow_shared_memory: bool | None = None,
+    ) -> None:
+        """Configure Kitty graphics options in one call.
+
+        Omitted options are left unchanged. Set ``storage_limit_bytes`` to zero to
+        disable Kitty graphics and clear stored images.
+        """
+        if storage_limit_bytes is not None:
+            self.set_kitty_image_storage_limit(storage_limit_bytes)
+        if allow_file is not None:
+            self.set_kitty_image_from_file_allowed(allow_file)
+        if allow_temp_file is not None:
+            self.set_kitty_image_from_temp_file_allowed(allow_temp_file)
+        if allow_shared_memory is not None:
+            self.set_kitty_image_from_shared_memory_allowed(allow_shared_memory)
