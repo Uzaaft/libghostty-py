@@ -25,7 +25,7 @@ import time
 import zlib
 from contextlib import suppress
 from functools import cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from PyQt6.QtCore import QSocketNotifier, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QImage, QKeyEvent, QPainter, QResizeEvent
@@ -100,6 +100,13 @@ _MODS_ALT = 1 << 2
 _MODS_SUPER = 1 << 3
 
 
+class TerminalGeometry(NamedTuple):
+    cols: int
+    rows: int
+    cell_width_px: int
+    cell_height_px: int
+
+
 def _qt_mods_to_ghostty(qt_mods: Qt.KeyboardModifier) -> int:
     mods = 0
     if qt_mods & Qt.KeyboardModifier.ShiftModifier:
@@ -115,21 +122,18 @@ def _qt_mods_to_ghostty(qt_mods: Qt.KeyboardModifier) -> int:
 
 def _set_pty_size(
     fd: int,
-    cols: int,
-    rows: int,
-    cell_width_px: int,
-    cell_height_px: int,
+    geometry: TerminalGeometry,
 ) -> None:
-    width_px = cols * cell_width_px
-    height_px = rows * cell_height_px
-    winsize = struct.pack("HHHH", rows, cols, width_px, height_px)
+    width_px = geometry.cols * geometry.cell_width_px
+    height_px = geometry.rows * geometry.cell_height_px
+    winsize = struct.pack("HHHH", geometry.rows, geometry.cols, width_px, height_px)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
 class PtySession:
     """A shell process connected to a non-blocking PTY."""
 
-    def __init__(self, cols: int, rows: int, cell_width_px: int, cell_height_px: int) -> None:
+    def __init__(self, geometry: TerminalGeometry) -> None:
         child_pid, master_fd = pty.fork()
         if child_pid == 0:
             shell = os.environ.get("SHELL", "/bin/sh")
@@ -140,7 +144,7 @@ class PtySession:
 
         self.fd = master_fd
         self._child_pid = child_pid
-        self.resize(cols, rows, cell_width_px, cell_height_px)
+        self.resize(geometry)
         flags = fcntl.fcntl(self.fd, fcntl.F_GETFL)
         fcntl.fcntl(self.fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
@@ -151,8 +155,8 @@ class PtySession:
         with suppress(OSError):
             os.write(self.fd, data)
 
-    def resize(self, cols: int, rows: int, cell_width_px: int, cell_height_px: int) -> None:
-        _set_pty_size(self.fd, cols, rows, cell_width_px, cell_height_px)
+    def resize(self, geometry: TerminalGeometry) -> None:
+        _set_pty_size(self.fd, geometry)
 
     def close(self) -> None:
         with suppress(OSError):
@@ -274,13 +278,7 @@ class GhostlingWidget(QWidget):
 
         self._key_encoder = QtKeyEncoder()
 
-        # PTY
-        self._pty = PtySession(
-            self._grid_cols,
-            self._grid_rows,
-            self._cell_width_px,
-            self._cell_height_px,
-        )
+        self._pty = PtySession(self._geometry)
 
         self._notifier = QSocketNotifier(self._pty.fd, QSocketNotifier.Type.Read, self)
         self._notifier.activated.connect(self._on_pty_readable)
@@ -313,6 +311,15 @@ class GhostlingWidget(QWidget):
     @property
     def _cell_height_px(self) -> int:
         return int(self._cell_height)
+
+    @property
+    def _geometry(self) -> TerminalGeometry:
+        return TerminalGeometry(
+            cols=self._grid_cols,
+            rows=self._grid_rows,
+            cell_width_px=self._cell_width_px,
+            cell_height_px=self._cell_height_px,
+        )
 
     def _device_attributes(self) -> DeviceAttributes:
         return DeviceAttributes()
@@ -363,8 +370,13 @@ class GhostlingWidget(QWidget):
         if new_cols != self._grid_cols or new_rows != self._grid_rows:
             self._grid_cols = new_cols
             self._grid_rows = new_rows
-            self._terminal.resize(new_cols, new_rows, self._cell_width_px, self._cell_height_px)
-            self._pty.resize(new_cols, new_rows, self._cell_width_px, self._cell_height_px)
+            self._terminal.resize(
+                self._geometry.cols,
+                self._geometry.rows,
+                self._geometry.cell_width_px,
+                self._geometry.cell_height_px,
+            )
+            self._pty.resize(self._geometry)
             self._render.update(self._terminal)
 
         super().resizeEvent(event)
