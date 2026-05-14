@@ -205,6 +205,11 @@ _DEFAULT_BG = QColor(30, 30, 46)
 _DEFAULT_FG = QColor(205, 214, 244)
 _CURSOR_COLOR = QColor(245, 194, 231)
 _FPS_COLOR = QColor(250, 250, 0)
+_QIMAGE_RAW_FORMATS: dict[KittyImageFormat, tuple[int, QImage.Format]] = {
+    KittyImageFormat.RGBA: (4, QImage.Format.Format_RGBA8888),
+    KittyImageFormat.RGB: (3, QImage.Format.Format_RGB888),
+    KittyImageFormat.GRAY: (1, QImage.Format.Format_Grayscale8),
+}
 
 
 class GhostlingWidget(QWidget):
@@ -497,30 +502,17 @@ class GhostlingWidget(QWidget):
 
         if image.format == KittyImageFormat.PNG:
             return QImage.fromData(data)
-        if image.format == KittyImageFormat.RGBA:
+
+        if raw_format := _QIMAGE_RAW_FORMATS.get(image.format):
+            bytes_per_pixel, qimage_format = raw_format
             return QImage(
                 data,
                 image.width,
                 image.height,
-                image.width * 4,
-                QImage.Format.Format_RGBA8888,
+                image.width * bytes_per_pixel,
+                qimage_format,
             ).copy()
-        if image.format == KittyImageFormat.RGB:
-            return QImage(
-                data,
-                image.width,
-                image.height,
-                image.width * 3,
-                QImage.Format.Format_RGB888,
-            ).copy()
-        if image.format == KittyImageFormat.GRAY:
-            return QImage(
-                data,
-                image.width,
-                image.height,
-                image.width,
-                QImage.Format.Format_Grayscale8,
-            ).copy()
+
         return QImage()
 
     def _on_blink(self) -> None:
