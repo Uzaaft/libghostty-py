@@ -4,6 +4,7 @@ from typing import Literal, TypeAlias
 GhosttyMode: TypeAlias = int
 GhosttyMods: TypeAlias = int
 GhosttyColorPaletteIndex: TypeAlias = int
+GhosttyKittyKeyFlags: TypeAlias = int
 GhosttySgrUnderline: TypeAlias = int
 GhosttyMouseAction: TypeAlias = int
 GhosttyMouseButton: TypeAlias = int
@@ -22,6 +23,15 @@ class GhosttyKeyEncoder: ...
 
 
 class GhosttyKeyEvent: ...
+
+
+class GhosttyKittyGraphics: ...
+
+
+class GhosttyKittyGraphicsImage: ...
+
+
+class GhosttyKittyGraphicsPlacementIterator: ...
 
 
 class GhosttyMouseEncoder: ...
@@ -58,12 +68,13 @@ GhosttyResult: TypeAlias = Literal[0, -1, -2, -3, -4]
 GhosttyBuildInfo: TypeAlias = Literal[1, 2, 3, 5, 6, 7, 8]
 GhosttyTerminalScrollViewportTag: TypeAlias = Literal[0, 1, 2]
 GhosttyTerminalScreen: TypeAlias = Literal[1]
-GhosttyTerminalOption: TypeAlias = Literal[1, 6, 8, 11, 12]
-GhosttyTerminalData: TypeAlias = Literal[1, 2, 3, 4, 6, 7, 12, 14, 15, 18, 19]
+GhosttyTerminalOption: TypeAlias = Literal[1, 6, 8, 11, 12, 15, 16, 17, 18, 19, 20]
+GhosttyTerminalData: TypeAlias = Literal[1, 2, 3, 4, 6, 7, 12, 14, 15, 18, 19, 26, 27, 28, 29, 30]
 GhosttySgrAttributeTag: TypeAlias = Literal[7, 8, 9, 21, 22, 23, 24, 27, 28, 29, 30]
 GhosttyOscCommandType: TypeAlias = Literal[0, 1]
 GhosttyOscCommandData: TypeAlias = Literal[1]
 GhosttyKeyAction: TypeAlias = Literal[0, 1, 2]
+GhosttyKeyEncoderOption: TypeAlias = Literal[0, 1, 2, 3, 4, 5, 6, 7, 0x7FFFFFFF]
 GhosttyKey: TypeAlias = Literal[
     0,
     1,
@@ -199,6 +210,15 @@ GhosttyKey: TypeAlias = Literal[
     131,
     132,
 ]
+GhosttyKittyGraphicsData: TypeAlias = Literal[0, 1, 0x7FFFFFFF]
+GhosttyKittyGraphicsPlacementData: TypeAlias = Literal[
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0x7FFFFFFF
+]
+GhosttyKittyPlacementLayer: TypeAlias = Literal[0, 1, 2, 3, 0x7FFFFFFF]
+GhosttyKittyGraphicsPlacementIteratorOption: TypeAlias = Literal[0, 0x7FFFFFFF]
+GhosttyKittyImageFormat: TypeAlias = Literal[0, 1, 2, 3, 4, 0x7FFFFFFF]
+GhosttyKittyImageCompression: TypeAlias = Literal[0, 1, 0x7FFFFFFF]
+GhosttyKittyGraphicsImageData: TypeAlias = Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 0x7FFFFFFF]
 GhosttyFormatterFormat: TypeAlias = Literal[0, 1, 2]
 GhosttyRenderStateData: TypeAlias = Literal[3, 4, 10, 11, 12, 14, 15, 16]
 GhosttyRenderStateOption: TypeAlias = Literal[0]
@@ -286,6 +306,21 @@ class GhosttySgrAttribute:
 class GhosttyMousePosition:
     x: float
     y: float
+
+
+class GhosttyKittyGraphicsPlacementRenderInfo:
+    size: int
+    pixel_width: int
+    pixel_height: int
+    grid_cols: int
+    grid_rows: int
+    viewport_col: int
+    viewport_row: int
+    viewport_visible: bool
+    source_x: int
+    source_y: int
+    source_width: int
+    source_height: int
 
 
 class GhosttyFormatterScreenExtra:
@@ -417,16 +452,21 @@ def ghostty_key_event_get_mods(event: GhosttyKeyEvent) -> GhosttyMods: ...
 def ghostty_key_event_set_consumed_mods(
     event: GhosttyKeyEvent, consumed_mods: GhosttyMods
 ) -> None: ...
+def ghostty_key_event_get_consumed_mods(event: GhosttyKeyEvent) -> GhosttyMods: ...
 def ghostty_key_event_set_composing(event: GhosttyKeyEvent, composing: bool) -> None: ...
 def ghostty_key_event_get_composing(event: GhosttyKeyEvent) -> bool: ...
 def ghostty_key_event_set_utf8(event: GhosttyKeyEvent, utf8: str, len: int) -> None: ...
 def ghostty_key_event_set_unshifted_codepoint(event: GhosttyKeyEvent, codepoint: int) -> None: ...
+def ghostty_key_event_get_unshifted_codepoint(event: GhosttyKeyEvent) -> int: ...
 def ghostty_key_encoder_new(
     allocator: GhosttyAllocator, encoder: GhosttyKeyEncoder
 ) -> GhosttyResult: ...
 def ghostty_key_encoder_free(encoder: GhosttyKeyEncoder) -> None: ...
 def ghostty_key_encoder_setopt_from_terminal(
     encoder: GhosttyKeyEncoder, terminal: GhosttyTerminal
+) -> None: ...
+def ghostty_key_encoder_setopt(
+    encoder: GhosttyKeyEncoder, option: GhosttyKeyEncoderOption, value: object
 ) -> None: ...
 def ghostty_key_encoder_encode(
     encoder: GhosttyKeyEncoder,
@@ -467,6 +507,89 @@ def ghostty_mouse_encoder_encode(
     out_buf: str,
     out_buf_size: int,
     out_len: int,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_get(
+    graphics: GhosttyKittyGraphics, data: GhosttyKittyGraphicsData, out: object
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_image(
+    graphics: GhosttyKittyGraphics, image_id: int
+) -> GhosttyKittyGraphicsImage: ...
+def ghostty_kitty_graphics_image_get(
+    image: GhosttyKittyGraphicsImage, data: GhosttyKittyGraphicsImageData, out: object
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_image_get_multi(
+    image: GhosttyKittyGraphicsImage,
+    count: int,
+    keys: GhosttyKittyGraphicsImageData,
+    values: None,
+    out_written: int,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_iterator_new(
+    allocator: GhosttyAllocator, out_iterator: GhosttyKittyGraphicsPlacementIterator
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_iterator_free(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+) -> None: ...
+def ghostty_kitty_graphics_placement_iterator_set(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    option: GhosttyKittyGraphicsPlacementIteratorOption,
+    value: object,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_next(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+) -> bool: ...
+def ghostty_kitty_graphics_placement_get(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    data: GhosttyKittyGraphicsPlacementData,
+    out: object,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_get_multi(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    count: int,
+    keys: GhosttyKittyGraphicsPlacementData,
+    values: None,
+    out_written: int,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_rect(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    image: GhosttyKittyGraphicsImage,
+    terminal: GhosttyTerminal,
+    out_selection: GhosttySelection,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_pixel_size(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    image: GhosttyKittyGraphicsImage,
+    terminal: GhosttyTerminal,
+    out_width: int,
+    out_height: int,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_grid_size(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    image: GhosttyKittyGraphicsImage,
+    terminal: GhosttyTerminal,
+    out_cols: int,
+    out_rows: int,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_viewport_pos(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    image: GhosttyKittyGraphicsImage,
+    terminal: GhosttyTerminal,
+    out_col: int,
+    out_row: int,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_source_rect(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    image: GhosttyKittyGraphicsImage,
+    out_x: int,
+    out_y: int,
+    out_width: int,
+    out_height: int,
+) -> GhosttyResult: ...
+def ghostty_kitty_graphics_placement_render_info(
+    iterator: GhosttyKittyGraphicsPlacementIterator,
+    image: GhosttyKittyGraphicsImage,
+    terminal: GhosttyTerminal,
+    out_info: GhosttyKittyGraphicsPlacementRenderInfo,
 ) -> GhosttyResult: ...
 def ghostty_formatter_terminal_new(
     allocator: GhosttyAllocator,
