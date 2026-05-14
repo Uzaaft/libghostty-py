@@ -32,7 +32,9 @@ from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QImage, QKeyEvent, QPainte
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from libghostty.vt import (
+    Cell,
     Color,
+    CursorInfo,
     CursorStyle,
     DeviceAttributes,
     Dirty,
@@ -45,6 +47,7 @@ from libghostty.vt import (
     KittyImageFormat,
     RenderState,
     SizeReport,
+    Snapshot,
     Terminal,
 )
 
@@ -110,9 +113,6 @@ def _qt_mods_to_ghostty(qt_mods: Qt.KeyboardModifier) -> int:
     return mods
 
 
-# PTY helpers
-
-
 def _set_pty_size(
     fd: int,
     cols: int,
@@ -126,17 +126,74 @@ def _set_pty_size(
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
-def _spawn_shell(cols: int, rows: int, cell_width_px: int, cell_height_px: int) -> tuple[int, int]:
-    """Fork a child process with a PTY running the user's shell."""
-    child_pid, master_fd = pty.fork()
-    if child_pid == 0:
-        shell = os.environ.get("SHELL", "/bin/sh")
-        env = os.environ.copy()
-        env["TERM"] = "xterm-256color"
-        env["COLORTERM"] = "truecolor"
-        os.execvpe(shell, [shell], env)
-    _set_pty_size(master_fd, cols, rows, cell_width_px, cell_height_px)
-    return master_fd, child_pid
+class PtySession:
+    """A shell process connected to a non-blocking PTY."""
+
+    def __init__(self, cols: int, rows: int, cell_width_px: int, cell_height_px: int) -> None:
+        child_pid, master_fd = pty.fork()
+        if child_pid == 0:
+            shell = os.environ.get("SHELL", "/bin/sh")
+            env = os.environ.copy()
+            env["TERM"] = "xterm-256color"
+            env["COLORTERM"] = "truecolor"
+            os.execvpe(shell, [shell], env)
+
+        self.fd = master_fd
+        self._child_pid = child_pid
+        self.resize(cols, rows, cell_width_px, cell_height_px)
+        flags = fcntl.fcntl(self.fd, fcntl.F_GETFL)
+        fcntl.fcntl(self.fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+    def read(self) -> bytes:
+        return os.read(self.fd, 65536)
+
+    def write(self, data: bytes) -> None:
+        with suppress(OSError):
+            os.write(self.fd, data)
+
+    def resize(self, cols: int, rows: int, cell_width_px: int, cell_height_px: int) -> None:
+        _set_pty_size(self.fd, cols, rows, cell_width_px, cell_height_px)
+
+    def close(self) -> None:
+        with suppress(OSError):
+            os.close(self.fd)
+        with suppress(OSError, ChildProcessError):
+            os.kill(self._child_pid, signal.SIGTERM)
+            os.waitpid(self._child_pid, os.WNOHANG)
+
+
+class QtKeyEncoder:
+    """Encode Qt key events into terminal input bytes."""
+
+    def __init__(self) -> None:
+        self._encoder = KeyEncoder()
+        self._event = KeyEvent()
+
+    def encode(self, event: QKeyEvent, terminal: Terminal) -> bytes:
+        entry = _QT_KEY_LOOKUP.get(event.key())
+        if entry is None:
+            return event.text().encode("utf-8")
+
+        ghostty_key, unshifted_cp = entry
+        mods = _qt_mods_to_ghostty(event.modifiers())
+        self._encoder.sync_from_terminal(terminal)
+        self._event.action = KeyAction.PRESS
+        self._event.key = ghostty_key
+        self._event.mods = mods
+        self._event.consumed_mods = _consumed_mods(unshifted_cp, mods)
+
+        if unshifted_cp != "\0":
+            self._event.unshifted_codepoint = ord(unshifted_cp)
+
+        text = event.text()
+        self._event.set_utf8(text if text and ord(text[0]) >= 0x20 else "")
+        return self._encoder.encode(self._event) or text.encode("utf-8")
+
+
+def _consumed_mods(unshifted_cp: str, mods: int) -> int:
+    if unshifted_cp != "\0" and (mods & _MODS_SHIFT):
+        return _MODS_SHIFT
+    return 0
 
 
 @cache
@@ -204,23 +261,17 @@ class GhostlingWidget(QWidget):
         self._render = RenderState()
         self._render.update(self._terminal)
 
-        # Key encoder
-        self._key_encoder = KeyEncoder()
-        self._key_event = KeyEvent()
+        self._key_encoder = QtKeyEncoder()
 
         # PTY
-        cell_w = int(self._cell_width)
-        cell_h = int(self._cell_height)
-        self._master_fd, self._child_pid = _spawn_shell(
+        self._pty = PtySession(
             self._grid_cols,
             self._grid_rows,
-            cell_w,
-            cell_h,
+            self._cell_width_px,
+            self._cell_height_px,
         )
-        flags = fcntl.fcntl(self._master_fd, fcntl.F_GETFL)
-        fcntl.fcntl(self._master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
-        self._notifier = QSocketNotifier(self._master_fd, QSocketNotifier.Type.Read, self)
+        self._notifier = QSocketNotifier(self._pty.fd, QSocketNotifier.Type.Read, self)
         self._notifier.activated.connect(self._on_pty_readable)
 
         # Blink timer
@@ -244,6 +295,14 @@ class GhostlingWidget(QWidget):
         self._update_window_size()
         self._update_title()
 
+    @property
+    def _cell_width_px(self) -> int:
+        return int(self._cell_width)
+
+    @property
+    def _cell_height_px(self) -> int:
+        return int(self._cell_height)
+
     def _device_attributes(self) -> DeviceAttributes:
         return DeviceAttributes()
 
@@ -251,13 +310,13 @@ class GhostlingWidget(QWidget):
         return SizeReport(
             rows=self._grid_rows,
             columns=self._grid_cols,
-            cell_width=int(self._cell_width),
-            cell_height=int(self._cell_height),
+            cell_width=self._cell_width_px,
+            cell_height=self._cell_height_px,
         )
 
     def _on_pty_readable(self) -> None:
         try:
-            data = os.read(self._master_fd, 65536)
+            data = self._pty.read()
         except OSError:
             self._notifier.setEnabled(False)
             self.close()
@@ -276,55 +335,13 @@ class GhostlingWidget(QWidget):
         self._update_title()
 
     def _write_to_pty(self, data: bytes) -> None:
-        with suppress(OSError):
-            os.write(self._master_fd, data)
+        self._pty.write(data)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        qt_key = event.key()
-        entry = _QT_KEY_LOOKUP.get(qt_key)
-
-        if entry is None:
-            # Key not in our map — send raw text as fallback
-            text = event.text()
-            if text:
-                self._write_to_pty(text.encode("utf-8"))
-            return
-
-        ghostty_key, unshifted_cp = entry
-        mods = _qt_mods_to_ghostty(event.modifiers())
-
-        # Consumed mods: for printable keys, shift is consumed by the
-        # platform's text input (it turns 'a' into 'A')
-        consumed = 0
-        if unshifted_cp != "\0" and (mods & _MODS_SHIFT):
-            consumed |= _MODS_SHIFT
-
-        # Sync encoder with current terminal modes
-        self._key_encoder.sync_from_terminal(self._terminal)
-
-        self._key_event.action = KeyAction.PRESS
-        self._key_event.key = ghostty_key
-        self._key_event.mods = mods
-
-        self._key_event.consumed_mods = consumed
-
-        # Set unshifted codepoint for Kitty keyboard protocol
-        if unshifted_cp != "\0":
-            self._key_event.unshifted_codepoint = ord(unshifted_cp)
-
-        # Attach UTF-8 text from Qt (the character after platform processing)
-        text = event.text()
-        if text and ord(text[0]) >= 0x20:
-            self._key_event.set_utf8(text)
-        else:
-            self._key_event.set_utf8("")
-
-        encoded = self._key_encoder.encode(self._key_event)
+        encoded = self._key_encoder.encode(event, self._terminal)
         if encoded:
             self._write_to_pty(encoded)
-        elif text:
-            # Fallback: encoder produced nothing, send raw text
-            self._write_to_pty(text.encode("utf-8"))
+        event.accept()
 
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
         event.accept()
@@ -336,15 +353,28 @@ class GhostlingWidget(QWidget):
         if new_cols != self._grid_cols or new_rows != self._grid_rows:
             self._grid_cols = new_cols
             self._grid_rows = new_rows
-            cell_w = int(self._cell_width)
-            cell_h = int(self._cell_height)
-            self._terminal.resize(new_cols, new_rows, cell_w, cell_h)
-            _set_pty_size(self._master_fd, new_cols, new_rows, cell_w, cell_h)
+            self._terminal.resize(new_cols, new_rows, self._cell_width_px, self._cell_height_px)
+            self._pty.resize(new_cols, new_rows, self._cell_width_px, self._cell_height_px)
             self._render.update(self._terminal)
 
         super().resizeEvent(event)
 
     def paintEvent(self, event: QPaintEvent) -> None:
+        self._update_fps()
+
+        painter = QPainter(self)
+        painter.setFont(self._font)
+
+        with self._render.update(self._terminal) as snap:
+            painter.fillRect(self.rect(), _qcolor(snap.colors.background))
+            self._draw_cells(painter, snap)
+            self._draw_cursor(painter, snap.cursor)
+            self._draw_kitty_images(painter)
+            self._draw_fps(painter)
+
+        painter.end()
+
+    def _update_fps(self) -> None:
         now = time.monotonic()
         self._fps_frame_count += 1
         elapsed = now - self._fps_last_update
@@ -353,78 +383,90 @@ class GhostlingWidget(QWidget):
             self._fps_frame_count = 0
             self._fps_last_update = now
 
-        painter = QPainter(self)
+    def _draw_cells(self, painter: QPainter, snap: Snapshot) -> None:
+        foreground = snap.colors.foreground
+        background = snap.colors.background
+        ascent = QFontMetricsF(self._font).ascent()
+
+        for row_idx, row in enumerate(snap.rows()):
+            y = row_idx * self._cell_height
+            for col_idx, cell in enumerate(row.cells()):
+                x = col_idx * self._cell_width
+                cell_fg = cell.fg or foreground
+                cell_bg = cell.bg or background
+
+                if cell.style.inverse:
+                    cell_fg, cell_bg = cell_bg, cell_fg
+
+                if cell_bg != background or cell.style.inverse:
+                    painter.fillRect(
+                        int(x),
+                        int(y),
+                        self._cell_width_px + 1,
+                        self._cell_height_px,
+                        _qcolor(cell_bg),
+                    )
+
+                if cell.text and cell.text != " ":
+                    painter.setFont(self._font_for_cell(cell))
+                    painter.setPen(_qcolor(cell_fg))
+                    painter.drawText(int(x), int(y + ascent), cell.text)
+
+            row.dirty = False
+
+    def _font_for_cell(self, cell: Cell) -> QFont:
+        if cell.style.bold and cell.style.italic:
+            return self._font_bold_italic
+        if cell.style.bold:
+            return self._font_bold
+        if cell.style.italic:
+            return self._font_italic
+        return self._font
+
+    def _draw_cursor(self, painter: QPainter, cursor: CursorInfo | None) -> None:
+        if cursor is None or not cursor.visible or not self._blink_visible:
+            return
+
+        cursor_x = cursor.x * self._cell_width
+        cursor_y = cursor.y * self._cell_height
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(_CURSOR_COLOR)
+
+        if cursor.style == CursorStyle.BLOCK:
+            painter.setOpacity(0.7)
+            painter.drawRect(
+                int(cursor_x),
+                int(cursor_y),
+                self._cell_width_px,
+                self._cell_height_px,
+            )
+            painter.setOpacity(1.0)
+        elif cursor.style == CursorStyle.BAR:
+            painter.drawRect(int(cursor_x), int(cursor_y), 2, self._cell_height_px)
+        elif cursor.style == CursorStyle.UNDERLINE:
+            painter.drawRect(
+                int(cursor_x),
+                int(cursor_y + self._cell_height - 2),
+                self._cell_width_px,
+                2,
+            )
+        elif cursor.style == CursorStyle.BLOCK_HOLLOW:
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(_CURSOR_COLOR)
+            painter.drawRect(
+                int(cursor_x),
+                int(cursor_y),
+                self._cell_width_px,
+                self._cell_height_px,
+            )
+
+    def _draw_fps(self, painter: QPainter) -> None:
         painter.setFont(self._font)
-
-        with self._render.update(self._terminal) as snap:
-            colors = snap.colors
-            bg_color = colors.background
-            fg_color = colors.foreground
-            painter.fillRect(self.rect(), _qcolor(bg_color))
-
-            cw = self._cell_width
-            ch = self._cell_height
-            ascent = QFontMetricsF(self._font).ascent()
-
-            for row_idx, row in enumerate(snap.rows()):
-                y = row_idx * ch
-                for col_idx, cell in enumerate(row.cells()):
-                    x = col_idx * cw
-
-                    cell_fg = cell.fg or fg_color
-                    cell_bg = cell.bg or bg_color
-
-                    if cell.style.inverse:
-                        cell_fg, cell_bg = cell_bg, cell_fg
-
-                    if cell_bg != bg_color or cell.style.inverse:
-                        painter.fillRect(
-                            int(x), int(y), int(cw) + 1, int(ch), _qcolor(cell_bg)
-                        )
-
-                    if cell.text and cell.text != " ":
-                        font = self._font
-                        if cell.style.bold and cell.style.italic:
-                            font = self._font_bold_italic
-                        elif cell.style.bold:
-                            font = self._font_bold
-                        elif cell.style.italic:
-                            font = self._font_italic
-                        painter.setFont(font)
-                        painter.setPen(_qcolor(cell_fg))
-                        painter.drawText(int(x), int(y + ascent), cell.text)
-
-                row.dirty = False
-
-            cursor = snap.cursor
-            if cursor is not None and cursor.visible and self._blink_visible:
-                cursor_x = cursor.x * cw
-                cursor_y = cursor.y * ch
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(_CURSOR_COLOR)
-
-                if cursor.style == CursorStyle.BLOCK:
-                    painter.setOpacity(0.7)
-                    painter.drawRect(int(cursor_x), int(cursor_y), int(cw), int(ch))
-                    painter.setOpacity(1.0)
-                elif cursor.style == CursorStyle.BAR:
-                    painter.drawRect(int(cursor_x), int(cursor_y), 2, int(ch))
-                elif cursor.style == CursorStyle.UNDERLINE:
-                    painter.drawRect(int(cursor_x), int(cursor_y + ch - 2), int(cw), 2)
-                elif cursor.style == CursorStyle.BLOCK_HOLLOW:
-                    painter.setBrush(Qt.BrushStyle.NoBrush)
-                    painter.setPen(_CURSOR_COLOR)
-                    painter.drawRect(int(cursor_x), int(cursor_y), int(cw), int(ch))
-
-            self._draw_kitty_images(painter)
-
-            painter.setFont(self._font)
-            painter.setPen(_FPS_COLOR)
-            fps_text = f"{self._fps:.1f} FPS"
-            fps_width = QFontMetricsF(self._font).horizontalAdvance(fps_text)
-            painter.drawText(int(self.width() - fps_width - 8), int(ascent) + 8, fps_text)
-
-        painter.end()
+        painter.setPen(_FPS_COLOR)
+        fps_text = f"{self._fps:.1f} FPS"
+        metrics = QFontMetricsF(self._font)
+        fps_width = metrics.horizontalAdvance(fps_text)
+        painter.drawText(int(self.width() - fps_width - 8), int(metrics.ascent()) + 8, fps_text)
 
     def _draw_kitty_images(self, painter: QPainter) -> None:
         for placement in self._terminal.kitty_image_placements():
@@ -499,11 +541,7 @@ class GhostlingWidget(QWidget):
 
     def closeEvent(self, event: object) -> None:
         self._notifier.setEnabled(False)
-        with suppress(OSError):
-            os.close(self._master_fd)
-        with suppress(OSError, ChildProcessError):
-            os.kill(self._child_pid, signal.SIGTERM)
-            os.waitpid(self._child_pid, os.WNOHANG)
+        self._pty.close()
 
 
 def main() -> int:
