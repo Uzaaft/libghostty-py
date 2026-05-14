@@ -253,6 +253,27 @@ _QIMAGE_RAW_FORMATS: dict[KittyImageFormat, tuple[int, QImage.Format]] = {
 }
 
 
+def _kitty_qimage(image: KittyImage) -> QImage:
+    data = image.data
+    if image.compression == KittyImageCompression.ZLIB_DEFLATE:
+        data = zlib.decompress(data)
+
+    if image.format == KittyImageFormat.PNG:
+        return QImage.fromData(data)
+
+    if raw_format := _QIMAGE_RAW_FORMATS.get(image.format):
+        bytes_per_pixel, qimage_format = raw_format
+        return QImage(
+            data,
+            image.width,
+            image.height,
+            image.width * bytes_per_pixel,
+            qimage_format,
+        ).copy()
+
+    return QImage()
+
+
 class GhostlingWidget(QWidget):
     """A PyQt6 terminal emulator widget powered by libghostty-vt."""
 
@@ -503,7 +524,7 @@ class GhostlingWidget(QWidget):
 
     def _draw_kitty_images(self, painter: QPainter) -> None:
         for placement in self._terminal.kitty_image_placements():
-            qimage = self._kitty_qimage(placement.image)
+            qimage = _kitty_qimage(placement.image)
             if qimage.isNull():
                 continue
 
@@ -523,26 +544,6 @@ class GhostlingWidget(QWidget):
                     Qt.TransformationMode.SmoothTransformation,
                 ),
             )
-
-    def _kitty_qimage(self, image: KittyImage) -> QImage:
-        data = image.data
-        if image.compression == KittyImageCompression.ZLIB_DEFLATE:
-            data = zlib.decompress(data)
-
-        if image.format == KittyImageFormat.PNG:
-            return QImage.fromData(data)
-
-        if raw_format := _QIMAGE_RAW_FORMATS.get(image.format):
-            bytes_per_pixel, qimage_format = raw_format
-            return QImage(
-                data,
-                image.width,
-                image.height,
-                image.width * bytes_per_pixel,
-                qimage_format,
-            ).copy()
-
-        return QImage()
 
     def _on_blink(self) -> None:
         self._blink_visible = not self._blink_visible
