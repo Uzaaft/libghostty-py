@@ -28,7 +28,16 @@ from functools import cache
 from typing import TYPE_CHECKING, NamedTuple
 
 from PyQt6.QtCore import QSocketNotifier, Qt, QTimer
-from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QImage, QKeyEvent, QPainter, QResizeEvent
+from PyQt6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QFont,
+    QFontMetricsF,
+    QImage,
+    QKeyEvent,
+    QPainter,
+    QResizeEvent,
+)
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from libghostty.vt import (
@@ -562,7 +571,7 @@ class GhostlingWidget(QWidget):
         h = int(self._grid_rows * self._cell_height)
         self.resize(w, h)
 
-    def closeEvent(self, event: object) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         self._notifier.setEnabled(False)
         self._pty.close()
 
