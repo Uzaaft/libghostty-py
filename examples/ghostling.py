@@ -107,6 +107,43 @@ class TerminalGeometry(NamedTuple):
     cell_height_px: int
 
 
+class FontSet(NamedTuple):
+    normal: QFont
+    bold: QFont
+    italic: QFont
+    bold_italic: QFont
+    by_style: dict[tuple[bool, bool], QFont]
+    cell_width: float
+    cell_height: float
+
+    @classmethod
+    def monospace(cls, point_size: int) -> FontSet:
+        normal = QFont("monospace", point_size)
+        normal.setStyleHint(QFont.StyleHint.Monospace)
+        bold = QFont(normal)
+        bold.setBold(True)
+        italic = QFont(normal)
+        italic.setItalic(True)
+        bold_italic = QFont(normal)
+        bold_italic.setBold(True)
+        bold_italic.setItalic(True)
+        metrics = QFontMetricsF(normal)
+        return cls(
+            normal=normal,
+            bold=bold,
+            italic=italic,
+            bold_italic=bold_italic,
+            by_style={
+                (False, False): normal,
+                (True, False): bold,
+                (False, True): italic,
+                (True, True): bold_italic,
+            },
+            cell_width=metrics.horizontalAdvance("M"),
+            cell_height=metrics.height(),
+        )
+
+
 def _qt_mods_to_ghostty(qt_mods: Qt.KeyboardModifier) -> int:
     mods = 0
     if qt_mods & Qt.KeyboardModifier.ShiftModifier:
@@ -222,25 +259,9 @@ class GhostlingWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # Font setup
-        self._font = QFont("monospace", 13)
-        self._font.setStyleHint(QFont.StyleHint.Monospace)
-        self._font_bold = QFont(self._font)
-        self._font_bold.setBold(True)
-        self._font_italic = QFont(self._font)
-        self._font_italic.setItalic(True)
-        self._font_bold_italic = QFont(self._font)
-        self._font_bold_italic.setBold(True)
-        self._font_bold_italic.setItalic(True)
-        self._fonts_by_style: dict[tuple[bool, bool], QFont] = {
-            (False, False): self._font,
-            (True, False): self._font_bold,
-            (False, True): self._font_italic,
-            (True, True): self._font_bold_italic,
-        }
-        metrics = QFontMetricsF(self._font)
-        self._cell_width = metrics.horizontalAdvance("M")
-        self._cell_height = metrics.height()
+        self._fonts = FontSet.monospace(13)
+        self._cell_width = self._fonts.cell_width
+        self._cell_height = self._fonts.cell_height
 
         # Initial grid size
         self._grid_cols = 80
@@ -385,7 +406,7 @@ class GhostlingWidget(QWidget):
         self._update_fps()
 
         painter = QPainter(self)
-        painter.setFont(self._font)
+        painter.setFont(self._fonts.normal)
 
         with self._render.update(self._terminal) as snap:
             painter.fillRect(self.rect(), _qcolor(snap.colors.background))
@@ -408,7 +429,7 @@ class GhostlingWidget(QWidget):
     def _draw_cells(self, painter: QPainter, snap: Snapshot) -> None:
         foreground = snap.colors.foreground
         background = snap.colors.background
-        ascent = QFontMetricsF(self._font).ascent()
+        ascent = QFontMetricsF(self._fonts.normal).ascent()
 
         for row_idx, row in enumerate(snap.rows()):
             y = row_idx * self._cell_height
@@ -437,7 +458,7 @@ class GhostlingWidget(QWidget):
             row.dirty = False
 
     def _font_for_cell(self, cell: Cell) -> QFont:
-        return self._fonts_by_style[(cell.style.bold, cell.style.italic)]
+        return self._fonts.by_style[(cell.style.bold, cell.style.italic)]
 
     def _draw_cursor(self, painter: QPainter, cursor: CursorInfo | None) -> None:
         if cursor is None or not cursor.visible or not self._blink_visible:
@@ -477,10 +498,10 @@ class GhostlingWidget(QWidget):
             )
 
     def _draw_fps(self, painter: QPainter) -> None:
-        painter.setFont(self._font)
+        painter.setFont(self._fonts.normal)
         painter.setPen(_FPS_COLOR)
         fps_text = f"{self._fps:.1f} FPS"
-        metrics = QFontMetricsF(self._font)
+        metrics = QFontMetricsF(self._fonts.normal)
         fps_width = metrics.horizontalAdvance(fps_text)
         painter.drawText(int(self.width() - fps_width - 8), int(metrics.ascent()) + 8, fps_text)
 
