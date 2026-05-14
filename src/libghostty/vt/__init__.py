@@ -5,7 +5,7 @@ from .errors import (
     OutOfMemoryError,
     OutOfSpaceError,
 )
-from .key import KeyEncoder, KeyEvent, KittyKeyFlags
+from .key import Key, KeyAction, KeyEncoder, KeyEvent, KittyKeyFlags
 from .mouse import MouseEncoder, MouseEvent
 from .osc import OscCommand, OscParser
 from .render import (
@@ -20,7 +20,15 @@ from .render import (
     Snapshot,
 )
 from .sgr import SgrAttribute, SgrParser
-from .terminal import Terminal
+from .terminal import (
+    DeviceAttributes,
+    KittyImage,
+    KittyImageCompression,
+    KittyImageFormat,
+    KittyImagePlacement,
+    SizeReport,
+    Terminal,
+)
 
 __all__ = (
     "Cell",
@@ -30,11 +38,18 @@ __all__ = (
     "CursorInfo",
     "CursorStyle",
     "Dirty",
+    "DeviceAttributes",
     "GhosttyError",
     "InvalidValueError",
+    "Key",
+    "KeyAction",
     "KeyEncoder",
     "KeyEvent",
     "KittyKeyFlags",
+    "KittyImage",
+    "KittyImageCompression",
+    "KittyImageFormat",
+    "KittyImagePlacement",
     "MouseEncoder",
     "MouseEvent",
     "NoValueError",
@@ -45,6 +60,7 @@ __all__ = (
     "RenderState",
     "SgrAttribute",
     "SgrParser",
+    "SizeReport",
     "Snapshot",
     "Terminal",
 )
