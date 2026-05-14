@@ -2,6 +2,12 @@ version = 1
 revision = 3
 requires-python = ">=3.10"
 
+[manifest]
+members = [
+    "libghostty",
+    "libghostty-vt",
+]
+
 [[package]]
 name = "cffi"
 version = "2.0.0"
@@ -135,7 +141,7 @@ name = "libghostty"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "cffi" },
+    { name = "libghostty-vt" },
 ]
 
 [package.optional-dependencies]
@@ -153,7 +159,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cffi", specifier = ">=1.17" },
+    { name = "libghostty-vt", editable = "libghostty-vt" },
     { name = "pyqt6", marker = "extra == 'examples'", specifier = ">=6.6" },
 ]
 provides-extras = ["examples"]
@@ -165,6 +171,17 @@ dev = [
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.10" },
 ]
+
+[[package]]
+name = "libghostty-vt"
+version = "0.1.0"
+source = { editable = "libghostty-vt" }
+dependencies = [
+    { name = "cffi" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "cffi", specifier = ">=1.17" }]
 
 [[package]]
 name = "librt"

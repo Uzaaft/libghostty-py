@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "libghostty-vt"
+version = "0.1.0"
+description = "Python bindings for libghostty-vt"
+license = "MIT"
+readme = "README.md"
+authors = [
+  { name = "trag1c", email = "dev@jakubr.me" },
+  { name = "Uzair Aftab", email = "git@uzaaft.me" },
+]
+requires-python = ">=3.10"
+dependencies = [
+  "cffi>=1.17",
+]
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
