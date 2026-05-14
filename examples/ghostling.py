@@ -223,6 +223,12 @@ class GhostlingWidget(QWidget):
         self._font_bold_italic = QFont(self._font)
         self._font_bold_italic.setBold(True)
         self._font_bold_italic.setItalic(True)
+        self._fonts_by_style: dict[tuple[bool, bool], QFont] = {
+            (False, False): self._font,
+            (True, False): self._font_bold,
+            (False, True): self._font_italic,
+            (True, True): self._font_bold_italic,
+        }
         metrics = QFontMetricsF(self._font)
         self._cell_width = metrics.horizontalAdvance("M")
         self._cell_height = metrics.height()
@@ -415,13 +421,7 @@ class GhostlingWidget(QWidget):
             row.dirty = False
 
     def _font_for_cell(self, cell: Cell) -> QFont:
-        if cell.style.bold and cell.style.italic:
-            return self._font_bold_italic
-        if cell.style.bold:
-            return self._font_bold
-        if cell.style.italic:
-            return self._font_italic
-        return self._font
+        return self._fonts_by_style[(cell.style.bold, cell.style.italic)]
 
     def _draw_cursor(self, painter: QPainter, cursor: CursorInfo | None) -> None:
         if cursor is None or not cursor.visible or not self._blink_visible:
