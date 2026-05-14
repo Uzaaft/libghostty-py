@@ -15,11 +15,15 @@ typedef enum {
 typedef uint16_t GhosttyMode;
 typedef uint16_t GhosttyMods;
 typedef uint8_t  GhosttyColorPaletteIndex;
+typedef uint8_t  GhosttyKittyKeyFlags;
 
 typedef struct GhosttyAllocator GhosttyAllocator;
 typedef struct GhosttyFormatterImpl *GhosttyFormatter;
 typedef struct GhosttyKeyEncoderImpl *GhosttyKeyEncoder;
 typedef struct GhosttyKeyEventImpl *GhosttyKeyEvent;
+typedef struct GhosttyKittyGraphicsImpl *GhosttyKittyGraphics;
+typedef const struct GhosttyKittyGraphicsImageImpl *GhosttyKittyGraphicsImage;
+typedef struct GhosttyKittyGraphicsPlacementIteratorImpl *GhosttyKittyGraphicsPlacementIterator;
 typedef struct GhosttyMouseEncoderImpl *GhosttyMouseEncoder;
 typedef struct GhosttyMouseEventImpl *GhosttyMouseEvent;
 typedef struct GhosttyOscCommandImpl *GhosttyOscCommand;
@@ -88,6 +92,12 @@ typedef enum {
     GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES = 8,
     GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND = 11,
     GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND = 12,
+    GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT = 15,
+    GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE = 16,
+    GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE = 17,
+    GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM = 18,
+    GHOSTTY_TERMINAL_OPT_APC_MAX_BYTES = 19,
+    GHOSTTY_TERMINAL_OPT_APC_MAX_BYTES_KITTY = 20,
 } GhosttyTerminalOption;
 
 typedef enum {
@@ -102,6 +112,11 @@ typedef enum {
     GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS = 15,
     GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND = 18,
     GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND = 19,
+    GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_STORAGE_LIMIT = 26,
+    GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_FILE = 27,
+    GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_TEMP_FILE = 28,
+    GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_SHARED_MEM = 29,
+    GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS = 30,
 } GhosttyTerminalData;
 
 GhosttyResult ghostty_terminal_new(const GhosttyAllocator *allocator,
@@ -240,6 +255,18 @@ typedef enum {
     GHOSTTY_KEY_ACTION_PRESS = 1,
     GHOSTTY_KEY_ACTION_REPEAT = 2,
 } GhosttyKeyAction;
+
+typedef enum {
+    GHOSTTY_KEY_ENCODER_OPT_CURSOR_KEY_APPLICATION = 0,
+    GHOSTTY_KEY_ENCODER_OPT_KEYPAD_KEY_APPLICATION = 1,
+    GHOSTTY_KEY_ENCODER_OPT_IGNORE_KEYPAD_WITH_NUMLOCK = 2,
+    GHOSTTY_KEY_ENCODER_OPT_ALT_ESC_PREFIX = 3,
+    GHOSTTY_KEY_ENCODER_OPT_MODIFY_OTHER_KEYS_STATE_2 = 4,
+    GHOSTTY_KEY_ENCODER_OPT_KITTY_FLAGS = 5,
+    GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT = 6,
+    GHOSTTY_KEY_ENCODER_OPT_BACKARROW_KEY_MODE = 7,
+    GHOSTTY_KEY_ENCODER_OPT_MAX_VALUE = 0x7fffffff,
+} GhosttyKeyEncoderOption;
 
 typedef enum {
     GHOSTTY_KEY_UNIDENTIFIED,
@@ -386,16 +413,22 @@ GhosttyKey ghostty_key_event_get_key(GhosttyKeyEvent event);
 void ghostty_key_event_set_mods(GhosttyKeyEvent event, GhosttyMods mods);
 GhosttyMods ghostty_key_event_get_mods(GhosttyKeyEvent event);
 void ghostty_key_event_set_consumed_mods(GhosttyKeyEvent event, GhosttyMods consumed_mods);
+GhosttyMods ghostty_key_event_get_consumed_mods(GhosttyKeyEvent event);
 void ghostty_key_event_set_composing(GhosttyKeyEvent event, bool composing);
 bool ghostty_key_event_get_composing(GhosttyKeyEvent event);
 void ghostty_key_event_set_utf8(GhosttyKeyEvent event, const char *utf8, size_t len);
+const char *ghostty_key_event_get_utf8(GhosttyKeyEvent event, size_t *len);
 void ghostty_key_event_set_unshifted_codepoint(GhosttyKeyEvent event, uint32_t codepoint);
+uint32_t ghostty_key_event_get_unshifted_codepoint(GhosttyKeyEvent event);
 
 GhosttyResult ghostty_key_encoder_new(const GhosttyAllocator *allocator,
                                       GhosttyKeyEncoder *encoder);
 void ghostty_key_encoder_free(GhosttyKeyEncoder encoder);
 void ghostty_key_encoder_setopt_from_terminal(GhosttyKeyEncoder encoder,
                                               GhosttyTerminal terminal);
+void ghostty_key_encoder_setopt(GhosttyKeyEncoder encoder,
+                                GhosttyKeyEncoderOption option,
+                                const void *value);
 GhosttyResult ghostty_key_encoder_encode(GhosttyKeyEncoder encoder,
                                          GhosttyKeyEvent event,
                                          char *out_buf,
@@ -433,6 +466,143 @@ GhosttyResult ghostty_mouse_encoder_encode(GhosttyMouseEncoder encoder,
                                            char *out_buf,
                                            size_t out_buf_size,
                                            size_t *out_len);
+
+typedef enum {
+    GHOSTTY_KITTY_GRAPHICS_DATA_INVALID = 0,
+    GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR = 1,
+    GHOSTTY_KITTY_GRAPHICS_DATA_MAX_VALUE = 0x7fffffff,
+} GhosttyKittyGraphicsData;
+
+typedef enum {
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_INVALID = 0,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID = 1,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_PLACEMENT_ID = 2,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IS_VIRTUAL = 3,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_X_OFFSET = 4,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Y_OFFSET = 5,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_SOURCE_X = 6,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_SOURCE_Y = 7,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_SOURCE_WIDTH = 8,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_SOURCE_HEIGHT = 9,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_COLUMNS = 10,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_ROWS = 11,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Z = 12,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_MAX_VALUE = 0x7fffffff,
+} GhosttyKittyGraphicsPlacementData;
+
+typedef enum {
+    GHOSTTY_KITTY_PLACEMENT_LAYER_ALL = 0,
+    GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_BG = 1,
+    GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_TEXT = 2,
+    GHOSTTY_KITTY_PLACEMENT_LAYER_ABOVE_TEXT = 3,
+    GHOSTTY_KITTY_PLACEMENT_LAYER_MAX_VALUE = 0x7fffffff,
+} GhosttyKittyPlacementLayer;
+
+typedef enum {
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPTION_LAYER = 0,
+    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPTION_MAX_VALUE = 0x7fffffff,
+} GhosttyKittyGraphicsPlacementIteratorOption;
+
+typedef enum {
+    GHOSTTY_KITTY_IMAGE_FORMAT_RGB = 0,
+    GHOSTTY_KITTY_IMAGE_FORMAT_RGBA = 1,
+    GHOSTTY_KITTY_IMAGE_FORMAT_PNG = 2,
+    GHOSTTY_KITTY_IMAGE_FORMAT_GRAY_ALPHA = 3,
+    GHOSTTY_KITTY_IMAGE_FORMAT_GRAY = 4,
+    GHOSTTY_KITTY_IMAGE_FORMAT_MAX_VALUE = 0x7fffffff,
+} GhosttyKittyImageFormat;
+
+typedef enum {
+    GHOSTTY_KITTY_IMAGE_COMPRESSION_NONE = 0,
+    GHOSTTY_KITTY_IMAGE_COMPRESSION_ZLIB_DEFLATE = 1,
+    GHOSTTY_KITTY_IMAGE_COMPRESSION_MAX_VALUE = 0x7fffffff,
+} GhosttyKittyImageCompression;
+
+typedef enum {
+    GHOSTTY_KITTY_IMAGE_DATA_INVALID = 0,
+    GHOSTTY_KITTY_IMAGE_DATA_ID = 1,
+    GHOSTTY_KITTY_IMAGE_DATA_NUMBER = 2,
+    GHOSTTY_KITTY_IMAGE_DATA_WIDTH = 3,
+    GHOSTTY_KITTY_IMAGE_DATA_HEIGHT = 4,
+    GHOSTTY_KITTY_IMAGE_DATA_FORMAT = 5,
+    GHOSTTY_KITTY_IMAGE_DATA_COMPRESSION = 6,
+    GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR = 7,
+    GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN = 8,
+    GHOSTTY_KITTY_IMAGE_DATA_MAX_VALUE = 0x7fffffff,
+} GhosttyKittyGraphicsImageData;
+
+typedef struct {
+    size_t size;
+    uint32_t pixel_width;
+    uint32_t pixel_height;
+    uint32_t grid_cols;
+    uint32_t grid_rows;
+    int32_t viewport_col;
+    int32_t viewport_row;
+    bool viewport_visible;
+    uint32_t source_x;
+    uint32_t source_y;
+    uint32_t source_width;
+    uint32_t source_height;
+} GhosttyKittyGraphicsPlacementRenderInfo;
+
+GhosttyResult ghostty_kitty_graphics_get(GhosttyKittyGraphics graphics,
+                                         GhosttyKittyGraphicsData data,
+                                         void *out);
+GhosttyKittyGraphicsImage ghostty_kitty_graphics_image(GhosttyKittyGraphics graphics,
+                                                       uint32_t image_id);
+GhosttyResult ghostty_kitty_graphics_image_get(GhosttyKittyGraphicsImage image,
+                                               GhosttyKittyGraphicsImageData data,
+                                               void *out);
+GhosttyResult ghostty_kitty_graphics_image_get_multi(GhosttyKittyGraphicsImage image,
+                                                     size_t count,
+                                                     const GhosttyKittyGraphicsImageData *keys,
+                                                     void **values,
+                                                     size_t *out_written);
+GhosttyResult ghostty_kitty_graphics_placement_iterator_new(const GhosttyAllocator *allocator,
+                                                            GhosttyKittyGraphicsPlacementIterator *out_iterator);
+void ghostty_kitty_graphics_placement_iterator_free(GhosttyKittyGraphicsPlacementIterator iterator);
+GhosttyResult ghostty_kitty_graphics_placement_iterator_set(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                            GhosttyKittyGraphicsPlacementIteratorOption option,
+                                                            const void *value);
+bool ghostty_kitty_graphics_placement_next(GhosttyKittyGraphicsPlacementIterator iterator);
+GhosttyResult ghostty_kitty_graphics_placement_get(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                   GhosttyKittyGraphicsPlacementData data,
+                                                   void *out);
+GhosttyResult ghostty_kitty_graphics_placement_get_multi(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                         size_t count,
+                                                         const GhosttyKittyGraphicsPlacementData *keys,
+                                                         void **values,
+                                                         size_t *out_written);
+GhosttyResult ghostty_kitty_graphics_placement_rect(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                    GhosttyKittyGraphicsImage image,
+                                                    GhosttyTerminal terminal,
+                                                    GhosttySelection *out_selection);
+GhosttyResult ghostty_kitty_graphics_placement_pixel_size(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                          GhosttyKittyGraphicsImage image,
+                                                          GhosttyTerminal terminal,
+                                                          uint32_t *out_width,
+                                                          uint32_t *out_height);
+GhosttyResult ghostty_kitty_graphics_placement_grid_size(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                         GhosttyKittyGraphicsImage image,
+                                                         GhosttyTerminal terminal,
+                                                         uint32_t *out_cols,
+                                                         uint32_t *out_rows);
+GhosttyResult ghostty_kitty_graphics_placement_viewport_pos(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                            GhosttyKittyGraphicsImage image,
+                                                            GhosttyTerminal terminal,
+                                                            int32_t *out_col,
+                                                            int32_t *out_row);
+GhosttyResult ghostty_kitty_graphics_placement_source_rect(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                           GhosttyKittyGraphicsImage image,
+                                                           uint32_t *out_x,
+                                                           uint32_t *out_y,
+                                                           uint32_t *out_width,
+                                                           uint32_t *out_height);
+GhosttyResult ghostty_kitty_graphics_placement_render_info(GhosttyKittyGraphicsPlacementIterator iterator,
+                                                           GhosttyKittyGraphicsImage image,
+                                                           GhosttyTerminal terminal,
+                                                           GhosttyKittyGraphicsPlacementRenderInfo *out_info);
 
 typedef enum {
     GHOSTTY_FORMATTER_FORMAT_PLAIN = 0,
