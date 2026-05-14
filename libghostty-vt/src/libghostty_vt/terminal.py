@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import dataclasses
 import enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from libghostty_vt._cffi import ffi, lib
 from libghostty_vt.errors import GhosttyError, check_result
@@ -15,8 +14,7 @@ if TYPE_CHECKING:
     from cffi import FFI
 
 
-@dataclasses.dataclass(frozen=True)
-class DeviceAttributes:
+class DeviceAttributes(NamedTuple):
     """Terminal device attributes reported for DA queries."""
 
     conformance_level: int = 62
@@ -27,8 +25,7 @@ class DeviceAttributes:
     unit_id: int = 0
 
 
-@dataclasses.dataclass(frozen=True)
-class SizeReport:
+class SizeReport(NamedTuple):
     """Terminal dimensions reported for XTWINOPS size queries."""
 
     rows: int
@@ -54,8 +51,7 @@ class KittyImageCompression(enum.IntEnum):
     ZLIB_DEFLATE = lib.GHOSTTY_KITTY_IMAGE_COMPRESSION_ZLIB_DEFLATE
 
 
-@dataclasses.dataclass(frozen=True)
-class KittyImage:
+class KittyImage(NamedTuple):
     """Decoded Kitty graphics image payload."""
 
     width: int
@@ -65,8 +61,7 @@ class KittyImage:
     data: bytes
 
 
-@dataclasses.dataclass(frozen=True)
-class KittyImagePlacement:
+class KittyImagePlacement(NamedTuple):
     """Visible Kitty graphics placement ready for rendering."""
 
     image: KittyImage
