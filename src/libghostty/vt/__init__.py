@@ -5,7 +5,7 @@ from .errors import (
     OutOfMemoryError,
     OutOfSpaceError,
 )
-from .key import KeyEncoder, KeyEvent
+from .key import KeyEncoder, KeyEvent, KittyKeyFlags
 from .mouse import MouseEncoder, MouseEvent
 from .osc import OscCommand, OscParser
 from .render import (
@@ -34,6 +34,7 @@ __all__ = (
     "InvalidValueError",
     "KeyEncoder",
     "KeyEvent",
+    "KittyKeyFlags",
     "MouseEncoder",
     "MouseEvent",
     "NoValueError",
