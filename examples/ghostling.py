@@ -267,31 +267,7 @@ class GhostlingWidget(QWidget):
         self._grid_cols = 80
         self._grid_rows = 24
 
-        # Terminal
-        self._terminal = Terminal(
-            cols=self._grid_cols,
-            rows=self._grid_rows,
-            max_scrollback=10000,
-        )
-        self._terminal.set_background_color(
-            _DEFAULT_BG.red(), _DEFAULT_BG.green(), _DEFAULT_BG.blue()
-        )
-        self._terminal.set_foreground_color(
-            _DEFAULT_FG.red(), _DEFAULT_FG.green(), _DEFAULT_FG.blue()
-        )
-        self._terminal.set_kitty_image_storage_limit(64 * 1024 * 1024)
-
-        # Set cell pixel dimensions so size reports work correctly
-        self._terminal.resize(
-            self._grid_cols,
-            self._grid_rows,
-            int(self._cell_width),
-            int(self._cell_height),
-        )
-
-        self._terminal.set_write_pty_callback(self._write_to_pty)
-        self._terminal.set_device_attributes_callback(self._device_attributes)
-        self._terminal.set_size_callback(self._size_report)
+        self._terminal = self._create_terminal()
 
         # Render state — initial sync from terminal
         self._render = RenderState()
@@ -344,6 +320,26 @@ class GhostlingWidget(QWidget):
 
     def _device_attributes(self) -> DeviceAttributes:
         return DeviceAttributes()
+
+    def _create_terminal(self) -> Terminal:
+        terminal = Terminal(
+            cols=self._grid_cols,
+            rows=self._grid_rows,
+            max_scrollback=10000,
+        )
+        terminal.set_background_color(_DEFAULT_BG.red(), _DEFAULT_BG.green(), _DEFAULT_BG.blue())
+        terminal.set_foreground_color(_DEFAULT_FG.red(), _DEFAULT_FG.green(), _DEFAULT_FG.blue())
+        terminal.set_kitty_image_storage_limit(64 * 1024 * 1024)
+        terminal.resize(
+            self._geometry.cols,
+            self._geometry.rows,
+            self._geometry.cell_width_px,
+            self._geometry.cell_height_px,
+        )
+        terminal.set_write_pty_callback(self._write_to_pty)
+        terminal.set_device_attributes_callback(self._device_attributes)
+        terminal.set_size_callback(self._size_report)
+        return terminal
 
     def _size_report(self) -> SizeReport:
         return SizeReport(
