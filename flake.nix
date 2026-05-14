@@ -4,26 +4,55 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    zig = {
+      url = "github:mitchellh/zig-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     ghostty = {
       url = "github:ghostty-org/ghostty";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.zig.follows = "zig";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, ghostty }:
+  outputs = { self, nixpkgs, flake-utils, zig, ghostty }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [
+            (_final: prev: {
+              zig_0_15 =
+                if prev.stdenv.hostPlatform.isDarwin
+                then
+                  zig.packages.${system}.brew."0.15.2".overrideAttrs (old: {
+                    setupHook = prev.zig_0_15.setupHook;
+                    passthru = (old.passthru or {}) // {
+                      hook = prev.zig_0_15.hook;
+                    };
+                  })
+                else zig.packages.${system}."0.15.2";
+            })
+          ];
+        };
         python = pkgs.python313;
 
-        libghostty-vt = ghostty.packages.${system}.libghostty-vt;
+        zig_0_15 = pkgs.zig_0_15;
+        overrideLibghosttyVt = package: (package.override {
+          inherit zig_0_15;
+        }).overrideAttrs (old: {
+          nativeBuildInputs = old.nativeBuildInputs ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+            pkgs.zig_0_15.hook
+          ];
+        });
+        libghostty-vt = overrideLibghosttyVt ghostty.packages.${system}.libghostty-vt;
       in
       {
         packages = {
           inherit libghostty-vt;
 
-          libghostty-vt-debug = ghostty.packages.${system}.libghostty-vt-debug;
-          libghostty-vt-releasesafe = ghostty.packages.${system}.libghostty-vt-releasesafe;
+          libghostty-vt-debug = overrideLibghosttyVt ghostty.packages.${system}.libghostty-vt-debug;
+          libghostty-vt-releasesafe = overrideLibghosttyVt ghostty.packages.${system}.libghostty-vt-releasesafe;
         };
 
         devShells.default = pkgs.mkShell {
