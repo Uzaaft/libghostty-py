@@ -51,92 +51,45 @@ from libghostty.vt import (
 if TYPE_CHECKING:
     from PyQt6.QtGui import QPaintEvent
 
-# Qt key code to GhosttyKey mapping
-# Each entry: (qt_key, ghostty_key, unshifted_codepoint)
-# The unshifted codepoint is the character the key produces with no modifiers
-# on a US layout. The Kitty keyboard protocol needs this. '\0' for keys
-# without a natural codepoint (arrows, function keys, etc.).
-
-_KEY_MAP: list[tuple[int, Key, str]] = [
-    (Qt.Key.Key_A, Key.A, "a"),
-    (Qt.Key.Key_B, Key.B, "b"),
-    (Qt.Key.Key_C, Key.C, "c"),
-    (Qt.Key.Key_D, Key.D, "d"),
-    (Qt.Key.Key_E, Key.E, "e"),
-    (Qt.Key.Key_F, Key.F, "f"),
-    (Qt.Key.Key_G, Key.G, "g"),
-    (Qt.Key.Key_H, Key.H, "h"),
-    (Qt.Key.Key_I, Key.I, "i"),
-    (Qt.Key.Key_J, Key.J, "j"),
-    (Qt.Key.Key_K, Key.K, "k"),
-    (Qt.Key.Key_L, Key.L, "l"),
-    (Qt.Key.Key_M, Key.M, "m"),
-    (Qt.Key.Key_N, Key.N, "n"),
-    (Qt.Key.Key_O, Key.O, "o"),
-    (Qt.Key.Key_P, Key.P, "p"),
-    (Qt.Key.Key_Q, Key.Q, "q"),
-    (Qt.Key.Key_R, Key.R, "r"),
-    (Qt.Key.Key_S, Key.S, "s"),
-    (Qt.Key.Key_T, Key.T, "t"),
-    (Qt.Key.Key_U, Key.U, "u"),
-    (Qt.Key.Key_V, Key.V, "v"),
-    (Qt.Key.Key_W, Key.W, "w"),
-    (Qt.Key.Key_X, Key.X, "x"),
-    (Qt.Key.Key_Y, Key.Y, "y"),
-    (Qt.Key.Key_Z, Key.Z, "z"),
-    (Qt.Key.Key_0, Key.DIGIT_0, "0"),
-    (Qt.Key.Key_1, Key.DIGIT_1, "1"),
-    (Qt.Key.Key_2, Key.DIGIT_2, "2"),
-    (Qt.Key.Key_3, Key.DIGIT_3, "3"),
-    (Qt.Key.Key_4, Key.DIGIT_4, "4"),
-    (Qt.Key.Key_5, Key.DIGIT_5, "5"),
-    (Qt.Key.Key_6, Key.DIGIT_6, "6"),
-    (Qt.Key.Key_7, Key.DIGIT_7, "7"),
-    (Qt.Key.Key_8, Key.DIGIT_8, "8"),
-    (Qt.Key.Key_9, Key.DIGIT_9, "9"),
-    (Qt.Key.Key_Space, Key.SPACE, " "),
-    (Qt.Key.Key_Return, Key.ENTER, "\0"),
-    (Qt.Key.Key_Enter, Key.NUMPAD_ENTER, "\0"),
-    (Qt.Key.Key_Tab, Key.TAB, "\0"),
-    (Qt.Key.Key_Backspace, Key.BACKSPACE, "\0"),
-    (Qt.Key.Key_Delete, Key.DELETE, "\0"),
-    (Qt.Key.Key_Escape, Key.ESCAPE, "\0"),
-    (Qt.Key.Key_Up, Key.ARROW_UP, "\0"),
-    (Qt.Key.Key_Down, Key.ARROW_DOWN, "\0"),
-    (Qt.Key.Key_Left, Key.ARROW_LEFT, "\0"),
-    (Qt.Key.Key_Right, Key.ARROW_RIGHT, "\0"),
-    (Qt.Key.Key_Home, Key.HOME, "\0"),
-    (Qt.Key.Key_End, Key.END, "\0"),
-    (Qt.Key.Key_PageUp, Key.PAGE_UP, "\0"),
-    (Qt.Key.Key_PageDown, Key.PAGE_DOWN, "\0"),
-    (Qt.Key.Key_Insert, Key.INSERT, "\0"),
-    (Qt.Key.Key_Minus, Key.MINUS, "-"),
-    (Qt.Key.Key_Equal, Key.EQUAL, "="),
-    (Qt.Key.Key_BracketLeft, Key.BRACKET_LEFT, "["),
-    (Qt.Key.Key_BracketRight, Key.BRACKET_RIGHT, "]"),
-    (Qt.Key.Key_Backslash, Key.BACKSLASH, "\\"),
-    (Qt.Key.Key_Semicolon, Key.SEMICOLON, ";"),
-    (Qt.Key.Key_Apostrophe, Key.QUOTE, "'"),
-    (Qt.Key.Key_Comma, Key.COMMA, ","),
-    (Qt.Key.Key_Period, Key.PERIOD, "."),
-    (Qt.Key.Key_Slash, Key.SLASH, "/"),
-    (Qt.Key.Key_QuoteLeft, Key.BACKQUOTE, "`"),
-    (Qt.Key.Key_F1, Key.F1, "\0"),
-    (Qt.Key.Key_F2, Key.F2, "\0"),
-    (Qt.Key.Key_F3, Key.F3, "\0"),
-    (Qt.Key.Key_F4, Key.F4, "\0"),
-    (Qt.Key.Key_F5, Key.F5, "\0"),
-    (Qt.Key.Key_F6, Key.F6, "\0"),
-    (Qt.Key.Key_F7, Key.F7, "\0"),
-    (Qt.Key.Key_F8, Key.F8, "\0"),
-    (Qt.Key.Key_F9, Key.F9, "\0"),
-    (Qt.Key.Key_F10, Key.F10, "\0"),
-    (Qt.Key.Key_F11, Key.F11, "\0"),
-    (Qt.Key.Key_F12, Key.F12, "\0"),
-]
-
-# Build a fast lookup dict: Qt key code -> (ghostty_key, unshifted_codepoint)
-_QT_KEY_LOOKUP: dict[int, tuple[Key, str]] = {qt: (gk, ucp) for qt, gk, ucp in _KEY_MAP}
+# Qt key code to Ghostty key plus unshifted codepoint. The codepoint is the
+# character the key produces on a US layout without modifiers, or '\0' for keys
+# without a natural printable codepoint.
+# Disclaimer: generated with AI to reduce LOC count as the previous table was an eyesore.
+_QT_KEY_LOOKUP: dict[Qt.Key, tuple[Key, str]] = {
+    **{
+        getattr(Qt.Key, f"Key_{letter}"): (Key[letter], letter.lower())
+        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    },
+    **{getattr(Qt.Key, f"Key_{digit}"): (Key[f"DIGIT_{digit}"], digit) for digit in "0123456789"},
+    **{getattr(Qt.Key, f"Key_F{number}"): (Key[f"F{number}"], "\0") for number in range(1, 13)},
+    Qt.Key.Key_Space: (Key.SPACE, " "),
+    Qt.Key.Key_Return: (Key.ENTER, "\0"),
+    Qt.Key.Key_Enter: (Key.NUMPAD_ENTER, "\0"),
+    Qt.Key.Key_Tab: (Key.TAB, "\0"),
+    Qt.Key.Key_Backspace: (Key.BACKSPACE, "\0"),
+    Qt.Key.Key_Delete: (Key.DELETE, "\0"),
+    Qt.Key.Key_Escape: (Key.ESCAPE, "\0"),
+    Qt.Key.Key_Up: (Key.ARROW_UP, "\0"),
+    Qt.Key.Key_Down: (Key.ARROW_DOWN, "\0"),
+    Qt.Key.Key_Left: (Key.ARROW_LEFT, "\0"),
+    Qt.Key.Key_Right: (Key.ARROW_RIGHT, "\0"),
+    Qt.Key.Key_Home: (Key.HOME, "\0"),
+    Qt.Key.Key_End: (Key.END, "\0"),
+    Qt.Key.Key_PageUp: (Key.PAGE_UP, "\0"),
+    Qt.Key.Key_PageDown: (Key.PAGE_DOWN, "\0"),
+    Qt.Key.Key_Insert: (Key.INSERT, "\0"),
+    Qt.Key.Key_Minus: (Key.MINUS, "-"),
+    Qt.Key.Key_Equal: (Key.EQUAL, "="),
+    Qt.Key.Key_BracketLeft: (Key.BRACKET_LEFT, "["),
+    Qt.Key.Key_BracketRight: (Key.BRACKET_RIGHT, "]"),
+    Qt.Key.Key_Backslash: (Key.BACKSLASH, "\\"),
+    Qt.Key.Key_Semicolon: (Key.SEMICOLON, ";"),
+    Qt.Key.Key_Apostrophe: (Key.QUOTE, "'"),
+    Qt.Key.Key_Comma: (Key.COMMA, ","),
+    Qt.Key.Key_Period: (Key.PERIOD, "."),
+    Qt.Key.Key_Slash: (Key.SLASH, "/"),
+    Qt.Key.Key_QuoteLeft: (Key.BACKQUOTE, "`"),
+}
 
 _MODS_SHIFT = 1 << 0
 _MODS_CTRL = 1 << 1
