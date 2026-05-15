@@ -182,7 +182,7 @@ class PtySession:
     def __init__(self, geometry: TerminalGeometry) -> None:
         child_pid, master_fd = pty.fork()
         if child_pid == 0:
-            shell = os.environ.get("SHELL", "/bin/sh")
+            shell = os.getenv("SHELL", "/bin/sh")
             env = os.environ.copy()
             env["TERM"] = "xterm-256color"
             env["COLORTERM"] = "truecolor"
