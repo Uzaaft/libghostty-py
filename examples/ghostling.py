@@ -70,9 +70,9 @@ if TYPE_CHECKING:
 _QT_KEY_LOOKUP: dict[Qt.Key, tuple[Key, str]] = {
     **{
         getattr(Qt.Key, f"Key_{letter}"): (Key[letter], letter.lower())
-        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        for letter in string.ascii_uppercase
     },
-    **{getattr(Qt.Key, f"Key_{digit}"): (Key[f"DIGIT_{digit}"], digit) for digit in "0123456789"},
+    **{getattr(Qt.Key, f"Key_{digit}"): (Key[f"DIGIT_{digit}"], digit) for digit in string.digits},
     **{getattr(Qt.Key, f"Key_F{number}"): (Key[f"F{number}"], "\0") for number in range(1, 13)},
     Qt.Key.Key_Space: (Key.SPACE, " "),
     Qt.Key.Key_Return: (Key.ENTER, "\0"),
