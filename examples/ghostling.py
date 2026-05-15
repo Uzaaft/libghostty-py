@@ -126,7 +126,7 @@ class FontSet(NamedTuple):
     cell_height: float
 
     @classmethod
-    def monospace(cls, point_size: int) -> FontSet:
+    def monospace(cls, point_size: int) -> Self:
         normal = QFont("monospace", point_size)
         normal.setStyleHint(QFont.StyleHint.Monospace)
         bold = QFont(normal)
