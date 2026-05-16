@@ -18,6 +18,7 @@ import fcntl
 import os
 import pty
 import signal
+import string
 import struct
 import sys
 import termios
@@ -62,6 +63,7 @@ from libghostty.vt import (
 
 if TYPE_CHECKING:
     from PyQt6.QtGui import QPaintEvent
+    from typing_extensions import Self
 
 # Qt key code to Ghostty key plus unshifted codepoint. The codepoint is the
 # character the key produces on a US layout without modifiers, or '\0' for keys
